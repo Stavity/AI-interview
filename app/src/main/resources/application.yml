@@ -95,6 +95,12 @@ spring:
 
 # Application custom configuration
 app:
+  multiround:
+    agent:
+      runtime: ${APP_MULTIROUND_AGENT_RUNTIME:LEGACY}
+      policy-version: ${APP_MULTIROUND_AGENT_POLICY_VERSION:interview-planning-v1}
+      max-tool-calls: ${APP_MULTIROUND_AGENT_MAX_TOOL_CALLS:4}
+      timeout-ms: ${APP_MULTIROUND_AGENT_TIMEOUT_MS:60000}
   learning:
     task-completion-delta: ${APP_LEARNING_TASK_COMPLETION_DELTA:5}
   ai:

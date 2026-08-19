@@ -22,7 +22,7 @@ class AgentRunTraceServiceTest {
   @Test @DisplayName("轨迹只返回已脱敏的步骤摘要")
   void shouldReturnTraceWithoutRunInput() {
     AgentRunAuditEntity run = new AgentRunAuditEntity(); run.setId(7L); run.setTriggerType("NEXT_QUESTION"); run.setStatus(AgentRunAuditEntity.Status.SUCCEEDED);
-    AgentRunStepAuditEntity step = new AgentRunStepAuditEntity(); step.setStepNo(1); step.setToolName("PLAN"); step.setStatus("SUCCEEDED"); step.setOutputSummary("round=2");
+    AgentRunStepAuditEntity step = new AgentRunStepAuditEntity(); step.setStepNo(1); step.setToolName("PLAN"); step.setEventType("MODEL"); step.setStatus("SUCCEEDED"); step.setOutputSummary("round=2");
     when(runRepository.findByInterviewIdOrderByStartedAtDesc(3L)).thenReturn(List.of(run));
     when(stepRepository.findByRunIdOrderByStepNoAsc(7L)).thenReturn(List.of(step));
 
@@ -31,6 +31,7 @@ class AgentRunTraceServiceTest {
     assertThat(trace).singleElement().satisfies(item -> {
       assertThat(item.triggerType()).isEqualTo("NEXT_QUESTION");
       assertThat(item.steps()).singleElement().extracting(AgentRunTraceService.StepTrace::outputSummary).isEqualTo("round=2");
+      assertThat(item.steps()).singleElement().extracting(AgentRunTraceService.StepTrace::eventType).isEqualTo("MODEL");
     });
   }
 }

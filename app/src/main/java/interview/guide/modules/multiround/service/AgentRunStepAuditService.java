@@ -22,6 +22,20 @@ public class AgentRunStepAuditService {
       String outputSummary,
       long durationMs,
       String status) {
+    return record(run, stepNo, toolName, inputSummary, outputSummary, durationMs, status, "MODEL", null);
+  }
+
+  @Transactional
+  public AgentRunStepAuditEntity record(
+      AgentRunAuditEntity run,
+      int stepNo,
+      String toolName,
+      String inputSummary,
+      String outputSummary,
+      long durationMs,
+      String status,
+      String eventType,
+      String toolCallId) {
     var step = new AgentRunStepAuditEntity();
     step.setRun(run);
     step.setStepNo(stepNo);
@@ -30,6 +44,8 @@ public class AgentRunStepAuditService {
     step.setOutputSummary(bound(outputSummary));
     step.setDurationMs(durationMs);
     step.setStatus(status);
+    step.setEventType(bound(eventType));
+    step.setToolCallId(bound(toolCallId));
     return repository.save(step);
   }
 

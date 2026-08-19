@@ -141,6 +141,15 @@ public class LlmProviderRegistry {
     }
 
     /**
+     * Resolves one enabled OpenAI-compatible provider snapshot for constrained integrations.
+     * The returned API key is transient runtime data and must never be persisted or logged.
+     */
+    public OpenAiCompatibleProvider getOpenAiCompatibleProvider(String providerId) {
+        ProviderSnapshot snapshot = loadProviderOrThrow(resolveProviderId(providerId));
+        return new OpenAiCompatibleProvider(snapshot.id(), snapshot.baseUrl(), snapshot.apiKey(), snapshot.model());
+    }
+
+    /**
      * 获取语音面试专用 ChatClient：SkillsTool + ToolCallAdvisor（流式）。
      * 不加 Memory Advisor（语音面试手动管理对话历史）。
      */
@@ -430,4 +439,6 @@ public class LlmProviderRegistry {
         Double temperature
     ) {
     }
+
+    public record OpenAiCompatibleProvider(String id, String baseUrl, String apiKey, String model) {}
 }

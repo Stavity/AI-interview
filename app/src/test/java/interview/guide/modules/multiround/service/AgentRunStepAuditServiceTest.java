@@ -23,4 +23,15 @@ class AgentRunStepAuditServiceTest {
     var step = new AgentRunStepAuditService(repository).record(run, 1, "PLAN", large, large, 12, "SUCCEEDED");
     assertThat(step.getInputSummary()).hasSize(500); assertThat(step.getOutputSummary()).hasSize(500);
   }
+
+  @Test @DisplayName("步骤审计保留安全的事件类型和工具调用关联")
+  void shouldStoreEventMetadata() {
+    when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    var step = new AgentRunStepAuditService(repository).record(new AgentRunAuditEntity(), 2,
+        "read_prior_answers", "maxItems=3", "answers=2", 8, "SUCCEEDED", "TOOL_CALL", "call-7");
+
+    assertThat(step.getEventType()).isEqualTo("TOOL_CALL");
+    assertThat(step.getToolCallId()).isEqualTo("call-7");
+  }
 }

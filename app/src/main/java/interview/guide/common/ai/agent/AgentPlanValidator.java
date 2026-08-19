@@ -20,4 +20,15 @@ public class AgentPlanValidator {
     budget.validateFollowUpCount(plan.followUpCount());
   }
 
+  public void validate(InterviewPlan plan, AgentBudget budget, InterviewPlanningContext context) {
+    validate(plan, budget);
+    if (plan.roundNo() != context.roundNo() || !plan.roundType().equals(context.roundType())) {
+      throw new IllegalArgumentException("Agent 计划不能改写当前轮次");
+    }
+    if (context.allowedCategoryKeys() == null || context.allowedCategoryKeys().isEmpty()
+        || !context.allowedCategoryKeys().containsAll(plan.categoryKeys())) {
+      throw new IllegalArgumentException("Agent 计划包含未授权题目分类");
+    }
+  }
+
 }

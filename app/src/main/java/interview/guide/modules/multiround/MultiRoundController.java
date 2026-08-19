@@ -6,6 +6,7 @@ import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.ai.agent.InterviewAgentOrchestrator;
 import interview.guide.common.ai.agent.InterviewPlan;
+import interview.guide.common.ai.adk.AgentRuntimeProperties;
 import interview.guide.modules.multiround.model.AlgorithmSubmissionEntity;
 import interview.guide.modules.multiround.service.AlgorithmSubmissionService;
 import interview.guide.modules.multiround.service.AlgorithmTemplateService;
@@ -47,6 +48,7 @@ public class MultiRoundController {
   private final MultiRoundReportService reportService;
   private final AgentRunTraceService traceService;
   private final AlgorithmSubmissionReviewService algorithmReviewService;
+  private final AgentRuntimeProperties agentRuntimeProperties;
 
   @PostMapping("/interviews/{sessionId}")
   public Result<InterviewResponse> createInterview(@PathVariable String sessionId, @RequestHeader("Idempotency-Key") String idempotencyKey) {
@@ -72,6 +74,10 @@ public class MultiRoundController {
   @GetMapping("/interviews/{sessionId}/agent-trace")
   public Result<List<AgentTraceResponse>> agentTrace(@PathVariable String sessionId) {
     return Result.success(traceService.list(interviewService.getBySessionId(sessionId).getId()).stream().map(AgentTraceResponse::from).toList());
+  }
+  @GetMapping("/agent-runtime")
+  public Result<AgentRuntimeResponse> agentRuntime() {
+    return Result.success(AgentRuntimeResponse.from(agentRuntimeProperties));
   }
   @PostMapping("/rounds/{roundId}/questions")
   public Result<QuestionResponse> addQuestion(@PathVariable Long roundId, @RequestHeader("Idempotency-Key") String idempotencyKey, @Valid @RequestBody AddQuestionRequest request) {
@@ -131,10 +137,29 @@ public class MultiRoundController {
   public record QuestionResponse(Long id, int sequenceNo, String questionType, String categoryKey, String question, String status, String answer) { static QuestionResponse from(interview.guide.modules.multiround.model.MultiRoundQuestionEntity value) { return new QuestionResponse(value.getId(), value.getSequenceNo(), value.getQuestionType(), value.getCategoryKey(), value.getQuestion(), value.getStatus().name(), value.getAnswer()); } }
   public record AgentPlanRequest(@NotBlank String trigger, @NotBlank @Size(max = 12000) String context) {}
   public record AgentPlanResponse(int roundNo, String roundType, int followUpCount, List<String> categoryKeys, int stepCount) {}
+  public record AgentRuntimeResponse(String runtime, String policyVersion) {
+    static AgentRuntimeResponse from(AgentRuntimeProperties value) {
+      return new AgentRuntimeResponse(value.getRuntime().name(), value.getPolicyVersion());
+    }
+  }
   public record ReportResponse(String status, int completedRounds, int totalRounds, String summary, String source,
                                List<MultiRoundRoundReportService.RoundReport> rounds) {}
-  public record AgentTraceStepResponse(int stepNo, String toolName, String status, String outputSummary, Long durationMs, java.time.LocalDateTime createdAt) { static AgentTraceStepResponse from(AgentRunTraceService.StepTrace value) { return new AgentTraceStepResponse(value.stepNo(), value.toolName(), value.status(), value.outputSummary(), value.durationMs(), value.createdAt()); } }
-  public record AgentTraceResponse(Long id, String triggerType, String status, String errorCode, java.time.LocalDateTime startedAt, java.time.LocalDateTime finishedAt, List<AgentTraceStepResponse> steps) { static AgentTraceResponse from(AgentRunTraceService.RunTrace value) { return new AgentTraceResponse(value.id(), value.triggerType(), value.status(), value.errorCode(), value.startedAt(), value.finishedAt(), value.steps().stream().map(AgentTraceStepResponse::from).toList()); } }
+  public record AgentTraceStepResponse(int stepNo, String eventType, String toolName, String status,
+      String outputSummary, Long durationMs, java.time.LocalDateTime createdAt) {
+    static AgentTraceStepResponse from(AgentRunTraceService.StepTrace value) {
+      return new AgentTraceStepResponse(value.stepNo(), value.eventType(), value.toolName(), value.status(),
+          value.outputSummary(), value.durationMs(), value.createdAt());
+    }
+  }
+  public record AgentTraceResponse(Long id, String triggerType, String status, String errorCode,
+      String runtimeType, String runtimeVersion, String policyVersion, java.time.LocalDateTime startedAt,
+      java.time.LocalDateTime finishedAt, List<AgentTraceStepResponse> steps) {
+    static AgentTraceResponse from(AgentRunTraceService.RunTrace value) {
+      return new AgentTraceResponse(value.id(), value.triggerType(), value.status(), value.errorCode(),
+          value.runtimeType(), value.runtimeVersion(), value.policyVersion(), value.startedAt(),
+          value.finishedAt(), value.steps().stream().map(AgentTraceStepResponse::from).toList());
+    }
+  }
   public record SubmissionResponse(Long id, Long questionId, String language, String templateVersion, String evaluationStatus, String evaluationErrorCode, String evaluation, String notice) {
     static SubmissionResponse from(AlgorithmSubmissionEntity value) { return new SubmissionResponse(value.getId(), value.getQuestion().getId(), value.getLanguage().name(), value.getTemplateVersion(), value.getEvaluationStatus().name(), value.getEvaluationErrorCode(), value.getEvaluationJson(), "AI 静态评审，未执行代码"); }
   }

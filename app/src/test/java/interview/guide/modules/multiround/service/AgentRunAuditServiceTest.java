@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import interview.guide.modules.multiround.model.AgentRunAuditEntity;
 import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
 import interview.guide.modules.multiround.repository.AgentRunAuditRepository;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -15,12 +15,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class AgentRunAuditServiceTest {
   @Mock private AgentRunAuditRepository repository;
-  @Test @DisplayName("审计记录只保存输入哈希而非原始输入")
-  void shouldStoreInputHashOnly() {
+
+  @Test
+  void shouldRecordGoogleAdkRuntimeMetadataWithoutPersistingInput() {
     when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-    MultiRoundInterviewEntity interview = new MultiRoundInterviewEntity();
-    var run = new AgentRunAuditService(repository).start(interview, "NEXT_QUESTION", "resume and answer content");
-    assertThat(run.getInputHash()).hasSize(64);
-    assertThat(run.getOutputJson()).isNull();
+
+    AgentRunAuditEntity run = new AgentRunAuditService(repository).start(
+        new MultiRoundInterviewEntity(), "ROUND_START", "sensitive resume text",
+        "GOOGLE_ADK", "1.8.0", "mr-run-12-34", "interview-planning-v1");
+
+    assertThat(run.getRuntimeType()).isEqualTo("GOOGLE_ADK");
+    assertThat(run.getRuntimeVersion()).isEqualTo("1.8.0");
+    assertThat(run.getRuntimeSessionId()).isEqualTo("mr-run-12-34");
+    assertThat(run.getInputHash()).doesNotContain("sensitive resume text");
   }
 }

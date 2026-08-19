@@ -15,7 +15,26 @@ public class AgentRunAuditService {
   private final AgentRunAuditRepository repository;
   @Transactional
   public AgentRunAuditEntity start(MultiRoundInterviewEntity interview, String triggerType, String input) {
-    var run = new AgentRunAuditEntity(); run.setInterview(interview); run.setTriggerType(triggerType); run.setInputHash(sha256(input)); run.setStartedAt(LocalDateTime.now()); return repository.save(run);
+    return start(interview, triggerType, input, "LEGACY", null, null, null);
+  }
+  @Transactional
+  public AgentRunAuditEntity start(MultiRoundInterviewEntity interview, String triggerType, String input,
+      String runtimeType, String runtimeVersion, String runtimeSessionId, String policyVersion) {
+    var run = new AgentRunAuditEntity();
+    run.setInterview(interview);
+    run.setTriggerType(triggerType);
+    run.setInputHash(sha256(input));
+    run.setRuntimeType(runtimeType);
+    run.setRuntimeVersion(runtimeVersion);
+    run.setRuntimeSessionId(runtimeSessionId);
+    run.setPolicyVersion(policyVersion);
+    run.setStartedAt(LocalDateTime.now());
+    return repository.save(run);
+  }
+  @Transactional
+  public void attachRuntimeSession(AgentRunAuditEntity run, String runtimeSessionId) {
+    run.setRuntimeSessionId(runtimeSessionId);
+    repository.save(run);
   }
   @Transactional
   public void succeeded(AgentRunAuditEntity run, String outputSummary) { run.setStatus(AgentRunAuditEntity.Status.SUCCEEDED); run.setOutputJson(outputSummary); run.setFinishedAt(LocalDateTime.now()); repository.save(run); }

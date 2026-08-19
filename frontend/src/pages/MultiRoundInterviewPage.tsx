@@ -267,9 +267,11 @@ export default function MultiRoundInterviewPage() {
               <p className="font-medium text-slate-900 dark:text-white">Agent 编排轨迹</p>
               {traces.map(trace => (
                 <div key={trace.id} className="mt-3 rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800">
-                  <p>{trace.triggerType} · {trace.status}</p>
+                  <p>{trace.triggerType} · {trace.status} · {trace.runtimeType === 'GOOGLE_ADK' ? 'Google ADK' : '稳定编排'}</p>
+                  {trace.policyVersion && <p className="mt-1 text-slate-500">策略：{trace.policyVersion}{trace.runtimeVersion ? ` · runtime ${trace.runtimeVersion}` : ''}</p>}
+                  {trace.errorCode?.includes('FALLBACK') && <p className="mt-1 text-amber-700 dark:text-amber-300">本轮已使用稳定出题策略继续。</p>}
                   {trace.steps.map(step => (
-                    <p key={step.stepNo} className="mt-1 text-slate-500">{step.stepNo}. {step.toolName} · {step.status}{step.outputSummary ? ` · ${step.outputSummary}` : ''}</p>
+                    <p key={step.stepNo} className="mt-1 text-slate-500">{step.stepNo}. {step.eventType ?? 'MODEL'} · {step.toolName} · {step.status}{step.outputSummary ? ` · ${step.outputSummary}` : ''}</p>
                   ))}
                 </div>
               ))}

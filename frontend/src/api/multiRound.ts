@@ -9,7 +9,8 @@ export interface MultiRoundDetail { interview: MultiRoundInterview; rounds: Arra
 export interface MultiRoundReport { status: string; completedRounds: number; totalRounds: number; summary: string; source: string; rounds: Array<{ roundNo: number; roundType: string; questionCount: number; answeredQuestionCount: number; questionTypes: Record<string, number> }>; }
 export interface MultiRoundQuestion { id: number; sequenceNo: number; questionType: string; categoryKey?: string; question: string; status: string; answer?: string; }
 export interface MultiRoundRound { id: number; roundNo: number; roundType: string; status: string; questionLimit: number; }
-export interface AgentRunTrace { id: number; triggerType: string; status: string; errorCode?: string; startedAt: string; finishedAt?: string; steps: Array<{ stepNo: number; toolName: string; status: string; outputSummary?: string; durationMs?: number; createdAt: string }>; }
+export interface AgentRunTrace { id: number; triggerType: string; status: string; errorCode?: string; runtimeType?: 'LEGACY' | 'GOOGLE_ADK'; runtimeVersion?: string; policyVersion?: string; startedAt: string; finishedAt?: string; steps: Array<{ stepNo: number; eventType?: string; toolName: string; status: string; outputSummary?: string; durationMs?: number; createdAt: string }>; }
+export interface AgentRuntime { runtime: 'LEGACY' | 'SHADOW' | 'GOOGLE_ADK'; policyVersion: string; }
 export interface StartMultiRoundInterviewRequest { skillId: string; difficulty: 'junior' | 'mid' | 'senior'; jdText?: string; restart?: boolean; }
 export interface MultiRoundBootstrapResponse { sessionId: string; interviewId: number; status: string; currentRoundNo: number; resumed: boolean; }
 const withIdempotencyKey = (idempotencyKey: string) => ({ headers: { 'Idempotency-Key': idempotencyKey } });
@@ -28,6 +29,7 @@ export const multiRoundApi = {
   answerQuestion: (questionId: number, idempotencyKey: string, answer: string) => request.post<void>(`/api/multi-round/questions/${questionId}/answer`, { answer }, withIdempotencyKey(idempotencyKey)),
   getReport: (sessionId: string) => request.get<MultiRoundReport>(`/api/multi-round/interviews/${sessionId}/report`),
   getAgentTrace: (sessionId: string) => request.get<AgentRunTrace[]>(`/api/multi-round/interviews/${sessionId}/agent-trace`),
+  getAgentRuntime: () => request.get<AgentRuntime>('/api/multi-round/agent-runtime'),
   nextRound: (sessionId: string, idempotencyKey: string) => request.post<MultiRoundRound | null>(`/api/multi-round/interviews/${sessionId}/next-round`, undefined, withIdempotencyKey(idempotencyKey)),
   getRoundReport: (roundId: number) => request.get<{ roundNo: number; roundType: string; questionCount: number; answeredQuestionCount: number; questionTypes: Record<string, number> }>(`/api/multi-round/rounds/${roundId}/report`),
   agentPlan: (sessionId: string, trigger: string, context: string) => request.post<{ roundNo: number; roundType: string; followUpCount: number; categoryKeys: string[]; stepCount: number }>(`/api/multi-round/interviews/${sessionId}/agent-plan`, { trigger, context }),

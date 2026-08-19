@@ -6,6 +6,8 @@ import {
   Loader2, Eye, EyeOff, RefreshCw, Server, Edit2, Mic, Volume2, ChevronDown, Database,
 } from 'lucide-react';
 import { llmProviderApi } from '../api/llmProvider';
+import { multiRoundApi } from '../api/multiRound';
+import type { AgentRuntime } from '../api/multiRound';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type {
   ProviderItem, CreateProviderRequest, UpdateProviderRequest,
@@ -142,6 +144,7 @@ export default function SettingsPage() {
   const [defaultProviderId, setDefaultProviderId] = useState('');
   const [defaultEmbeddingProviderId, setDefaultEmbeddingProviderId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [agentRuntime, setAgentRuntime] = useState<AgentRuntime | null>(null);
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -214,17 +217,19 @@ export default function SettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [providerList, defaultProvider, asr, tts] = await Promise.all([
+      const [providerList, defaultProvider, asr, tts, runtime] = await Promise.all([
         llmProviderApi.list(),
         llmProviderApi.getDefaultProvider(),
         llmProviderApi.getAsrConfig(),
         llmProviderApi.getTtsConfig(),
+        multiRoundApi.getAgentRuntime(),
       ]);
       setProviders(providerList);
       setDefaultProviderId(defaultProvider.defaultProvider);
       setDefaultEmbeddingProviderId(defaultProvider.defaultEmbeddingProvider);
       setAsrConfig(asr);
       setTtsConfig(tts);
+      setAgentRuntime(runtime);
     } catch (err) {
       console.error('Failed to load settings:', err);
       showToast('加载数据失败', 'error');
@@ -554,6 +559,16 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {agentRuntime && (
+        <div className="mb-6 border border-slate-200 px-4 py-3 text-sm dark:border-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium text-slate-800 dark:text-slate-100">面试 Agent Runtime</span>
+            <span className="font-mono text-xs text-slate-600 dark:text-slate-300">{agentRuntime.runtime}</span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">策略版本：{agentRuntime.policyVersion}</p>
+        </div>
+      )}
 
       {/* Loading state */}
       {loading ? (

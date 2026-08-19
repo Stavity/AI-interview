@@ -21,4 +21,20 @@ class AgentPlanValidatorTest {
     assertThatThrownBy(() -> validator.validate(new InterviewPlan(1, "ALGORITHM", 3, List.of("算法"), 1))).isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> validator.validate(new InterviewPlan(1, "ALGORITHM", 1, List.of("算法"), 7))).isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test @DisplayName("计划只能使用当前上下文允许的分类且不能改写当前轮次")
+  void shouldRejectPlanOutsideContextScope() {
+    InterviewPlanningContext context = new InterviewPlanningContext("resume", "jd", "java-backend",
+        "mid", 2, "TECHNICAL_1", List.of("java-core", "concurrency"), List.of(), List.of(),
+        List.of(), 3, 2);
+
+    assertThatCode(() -> validator.validate(new InterviewPlan(2, "TECHNICAL_1", 1,
+        List.of("java-core"), 2), AgentBudget.DEFAULT, context)).doesNotThrowAnyException();
+    assertThatThrownBy(() -> validator.validate(new InterviewPlan(2, "TECHNICAL_1", 1,
+        List.of("invented-category"), 2), AgentBudget.DEFAULT, context))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> validator.validate(new InterviewPlan(3, "TECHNICAL_2", 1,
+        List.of("java-core"), 2), AgentBudget.DEFAULT, context))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
 }

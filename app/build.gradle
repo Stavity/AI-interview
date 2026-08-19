@@ -45,6 +45,8 @@ dependencies {
     implementation "org.springframework.ai:spring-ai-starter-vector-store-pgvector:${libs.versions.springAi.get()}"
     // spring-ai-agent-utils core library
     implementation libs.spring.ai.agent.utils
+    // Google ADK Java - restricted multi-round interview orchestration runtime
+    implementation libs.google.adk
 
     // Apache Tika for document parsing (PDF, DOCX, TXT)
     implementation libs.tika.core

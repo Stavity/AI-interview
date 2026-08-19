@@ -9,6 +9,7 @@ import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
 import interview.guide.modules.multiround.model.MultiRoundQuestionEntity;
 import interview.guide.modules.multiround.repository.MultiRoundQuestionRepository;
 import interview.guide.modules.multiround.repository.MultiRoundRepository;
+import interview.guide.modules.interview.skill.InterviewSkillService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class MultiRoundPlanningContextFactoryTest {
   @Mock private MultiRoundRepository roundRepository;
   @Mock private MultiRoundQuestionRepository questionRepository;
+  @Mock private InterviewSkillService skillService;
 
   @Test
   void shouldBuildContextFromSnapshotsAndThisInterviewPriorAnswers() {
@@ -44,8 +46,11 @@ class MultiRoundPlanningContextFactoryTest {
     current.setQuestionLimit(2);
     when(roundRepository.findByInterviewIdOrderByRoundNoAsc(10L)).thenReturn(List.of(previous, current));
     when(questionRepository.findByRoundIdOrderBySequenceNoAsc(11L)).thenReturn(List.of(priorQuestion));
+    when(skillService.getSkill("java-backend")).thenReturn(new InterviewSkillService.SkillDTO("java-backend",
+        "Java", "", List.of(new InterviewSkillService.SkillCategoryDTO("java-core", "Java Core", "HIGH", null, false)),
+        true, null, null, null));
 
-    InterviewPlanningContext context = new MultiRoundPlanningContextFactory(roundRepository, questionRepository)
+    InterviewPlanningContext context = new MultiRoundPlanningContextFactory(roundRepository, questionRepository, skillService)
         .create(interview, current);
 
     assertThat(context.resumeSnapshot()).contains("cache migration");
@@ -53,5 +58,6 @@ class MultiRoundPlanningContextFactoryTest {
     assertThat(context.previousAnswers()).containsExactly("answer from round one");
     assertThat(context.priorQuestionSummaries()).containsExactly("Explain the trade-off");
     assertThat(context.priorRoundReportSummaries()).containsExactly("{\"summary\":\"algorithm complete\"}");
+    assertThat(context.allowedCategoryKeys()).containsExactly("java-core");
   }
 }

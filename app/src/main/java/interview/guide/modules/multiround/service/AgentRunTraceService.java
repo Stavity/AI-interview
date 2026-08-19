@@ -17,13 +17,18 @@ public class AgentRunTraceService {
   @Transactional(readOnly = true)
   public List<RunTrace> list(Long interviewId) {
     return runRepository.findByInterviewIdOrderByStartedAtDesc(interviewId).stream()
-        .map(run -> new RunTrace(run.getId(), run.getTriggerType(), run.getStatus().name(), run.getErrorCode(), run.getStartedAt(), run.getFinishedAt(),
+        .map(run -> new RunTrace(run.getId(), run.getTriggerType(), run.getStatus().name(), run.getErrorCode(),
+            run.getRuntimeType(), run.getRuntimeVersion(), run.getPolicyVersion(), run.getStartedAt(), run.getFinishedAt(),
             stepRepository.findByRunIdOrderByStepNoAsc(run.getId()).stream()
-                .map(step -> new StepTrace(step.getStepNo(), step.getToolName(), step.getStatus(), step.getOutputSummary(), step.getDurationMs(), step.getCreatedAt()))
+                .map(step -> new StepTrace(step.getStepNo(), step.getEventType(), step.getToolName(),
+                    step.getStatus(), step.getOutputSummary(), step.getDurationMs(), step.getCreatedAt()))
                 .toList()))
         .toList();
   }
 
-  public record RunTrace(Long id, String triggerType, String status, String errorCode, LocalDateTime startedAt, LocalDateTime finishedAt, List<StepTrace> steps) {}
-  public record StepTrace(int stepNo, String toolName, String status, String outputSummary, Long durationMs, LocalDateTime createdAt) {}
+  public record RunTrace(Long id, String triggerType, String status, String errorCode,
+      String runtimeType, String runtimeVersion, String policyVersion, LocalDateTime startedAt,
+      LocalDateTime finishedAt, List<StepTrace> steps) {}
+  public record StepTrace(int stepNo, String eventType, String toolName, String status,
+      String outputSummary, Long durationMs, LocalDateTime createdAt) {}
 }

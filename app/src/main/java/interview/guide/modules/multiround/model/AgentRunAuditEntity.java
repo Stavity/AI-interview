@@ -16,6 +16,11 @@ public class AgentRunAuditEntity {
   @Column(name = "input_hash", nullable = false, length = 64) private String inputHash;
   @Column(name = "output_json", columnDefinition = "TEXT") private String outputJson;
   @Column(name = "error_code") private String errorCode;
+  @Column(name = "runtime_type", length = 32) private String runtimeType;
+  @Column(name = "runtime_version", length = 64) private String runtimeVersion;
+  @Column(name = "runtime_session_id", length = 128) private String runtimeSessionId;
+  @Column(name = "policy_version", length = 64) private String policyVersion;
+  @Column(name = "rejection_reason", length = 128) private String rejectionReason;
   @Column(name = "started_at", nullable = false) private LocalDateTime startedAt;
   @Column(name = "finished_at") private LocalDateTime finishedAt;
 }

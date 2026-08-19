@@ -38,6 +38,12 @@ public class AgentRunStepAuditEntity {
   @Column(nullable = false, length = 20)
   private String status;
 
+  @Column(name = "event_type", length = 32)
+  private String eventType;
+
+  @Column(name = "tool_call_id", length = 128)
+  private String toolCallId;
+
   @Column(name = "created_at", nullable = false)
   private LocalDateTime createdAt;
 

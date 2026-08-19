@@ -38,7 +38,7 @@ class MultiRoundLifecycleServiceTest {
     when(roundRepository.findById(1L)).thenReturn(Optional.of(round));
     when(roundRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     InterviewPlanningContext context = new InterviewPlanningContext("resume", "jd", "java", "mid", 1,
-        "ALGORITHM", List.of(), List.of(), List.of(), 1, 2);
+        "ALGORITHM", List.of("resume-project"), List.of(), List.of(), List.of(), 1, 2);
     when(planningContextFactory.create(any(), any())).thenReturn(context);
     when(agentOrchestrator.plan(any(), any(), any(InterviewPlanningContext.class))).thenReturn(new InterviewPlan(1, "ALGORITHM", 0, List.of("resume-project"), 1));
     when(questionGenerationService.ensureQuestionsGenerated(any(), any(), any())).thenReturn(List.of());

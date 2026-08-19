@@ -7,6 +7,7 @@ import interview.guide.modules.chat.model.ChatMessageEntity;
 import interview.guide.modules.chat.service.ChatMessageService;
 import interview.guide.modules.chat.service.ChatSessionService;
 import interview.guide.modules.chat.service.ChatStreamService;
+import interview.guide.modules.chat.service.ChatSummaryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ public class ChatController {
   private final ChatSessionService sessionService;
   private final ChatMessageService messageService;
   private final ChatStreamService streamService;
+  private final ChatSummaryService summaryService;
 
   @PostMapping("/sessions")
   public Result<SessionResponse> createSession(@Valid @RequestBody CreateSessionRequest request) {
@@ -77,7 +79,10 @@ public class ChatController {
     return streamService.streamReply(sessionId, request.content())
         .doOnNext(fullContent::append)
         .map(chunk -> ServerSentEvent.<String>builder().data(chunk).build())
-        .doOnComplete(() -> messageService.completeStreamMessage(assistantMessageId, fullContent.toString()))
+        .doOnComplete(() -> {
+      messageService.completeStreamMessage(assistantMessageId, fullContent.toString());
+      summaryService.updateSummaryIfNeeded(sessionId);
+    })
         .doOnError(error -> messageService.failStreamMessage(assistantMessageId, "AI_SERVICE_ERROR"));
   }
   @PostMapping(value = "/sessions/{sessionId}/messages/{messageId}/retry", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

@@ -81,7 +81,16 @@ public enum ErrorCode {
     MODULE_NOT_FOUND(11008, "模块不存在"),
     VOICE_CONFIG_READ_FAILED(11009, "读取语音服务配置失败"),
     VOICE_CONFIG_WRITE_FAILED(11010, "写入语音服务配置失败"),
-    VOICE_CONFIG_TEST_FAILED(11011, "语音服务连通性测试失败");
+    VOICE_CONFIG_TEST_FAILED(11011, "语音服务连通性测试失败"),
+
+    // ========== 多轮面试与Agent模块错误 12xxx ==========
+    AGENT_PLAN_INVALID(12001, "Agent 计划不合法"),
+    AGENT_BUDGET_EXCEEDED(12002, "Agent 调用预算超限"),
+    ROUND_STATE_INVALID(12003, "轮次状态非法"),
+    CODE_TOO_LARGE(12004, "代码超出大小限制"),
+    SKILL_UNAVAILABLE(12005, "学习技能来源不可用"),
+    REMINDER_PERMISSION_REQUIRED(12006, "提醒需要浏览器通知权限"),
+    MULTI_ROUND_RESUME_REQUIRED(12007, "多轮面试必须绑定已解析简历");
 
     private final Integer code;
     private final String message;

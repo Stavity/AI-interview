@@ -18,6 +18,12 @@ public class MultiRoundInterviewEntity {
   @Column(name = "current_round_no", nullable = false) private int currentRoundNo;
   @Column(name = "provider_id", length = 64) private String providerId;
   @Column(name = "provider_fingerprint", length = 64) private String providerFingerprint;
+  @Column(name = "resume_snapshot", columnDefinition = "TEXT") private String resumeSnapshot;
+  @Column(name = "resume_snapshot_version", length = 64) private String resumeSnapshotVersion;
+  @Column(name = "jd_snapshot", columnDefinition = "TEXT") private String jdSnapshot;
+  @Column(name = "skill_id", length = 64) private String skillId;
+  @Column(length = 16) private String difficulty;
+  @Column(name = "scope_fingerprint", length = 64) private String scopeFingerprint;
   @Column(name = "started_at") private LocalDateTime startedAt;
   @Column(name = "completed_at") private LocalDateTime completedAt;
   @Column(name = "created_at", nullable = false, updatable = false) private LocalDateTime createdAt;

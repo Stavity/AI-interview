@@ -61,4 +61,24 @@ class MultiRoundInterviewServiceTest {
     MultiRoundInterviewEntity result = new MultiRoundInterviewService(sessionRepository, interviewRepository, roundRepository, settingRepository, providerRepository, idempotencyService).createUsingDefaultProvider("session-8");
     assertThat(result.getProviderId()).isEqualTo("provider-a"); assertThat(result.getProviderFingerprint()).hasSize(64);
   }
+
+  @Test
+  @DisplayName("多轮面试保留创建时的简历与岗位快照")
+  void shouldRetainResumeScopedSnapshot() {
+    MultiRoundInterviewEntity interview = new MultiRoundInterviewEntity();
+
+    interview.setResumeSnapshot("candidate resume");
+    interview.setResumeSnapshotVersion("resume-v1");
+    interview.setJdSnapshot("Java backend engineer");
+    interview.setSkillId("java-backend");
+    interview.setDifficulty("mid");
+    interview.setScopeFingerprint("scope-fingerprint");
+
+    assertThat(interview.getResumeSnapshot()).isEqualTo("candidate resume");
+    assertThat(interview.getResumeSnapshotVersion()).isEqualTo("resume-v1");
+    assertThat(interview.getJdSnapshot()).isEqualTo("Java backend engineer");
+    assertThat(interview.getSkillId()).isEqualTo("java-backend");
+    assertThat(interview.getDifficulty()).isEqualTo("mid");
+    assertThat(interview.getScopeFingerprint()).isEqualTo("scope-fingerprint");
+  }
 }

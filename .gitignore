@@ -28,3 +28,4 @@ frontend/test-results/
 frontend/playwright-report/
 /.agents
 skills-lock.json
+bootrun.sh

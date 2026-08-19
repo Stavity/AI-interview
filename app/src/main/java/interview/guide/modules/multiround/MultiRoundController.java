@@ -1,6 +1,8 @@
 package interview.guide.modules.multiround;
 
 import interview.guide.common.result.Result;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.ai.agent.InterviewAgentOrchestrator;
 import interview.guide.common.ai.agent.InterviewPlan;
@@ -8,6 +10,7 @@ import interview.guide.modules.multiround.model.AlgorithmSubmissionEntity;
 import interview.guide.modules.multiround.service.AlgorithmSubmissionService;
 import interview.guide.modules.multiround.service.AlgorithmTemplateService;
 import interview.guide.modules.multiround.service.MultiRoundInterviewService;
+import interview.guide.modules.multiround.model.MultiRoundEntity;
 import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
 import interview.guide.modules.multiround.repository.MultiRoundRepository;
 import interview.guide.modules.multiround.repository.MultiRoundQuestionRepository;
@@ -47,7 +50,7 @@ public class MultiRoundController {
 
   @PostMapping("/interviews/{sessionId}")
   public Result<InterviewResponse> createInterview(@PathVariable String sessionId, @RequestHeader("Idempotency-Key") String idempotencyKey) {
-    return Result.success(InterviewResponse.from(interviewService.createUsingDefaultProvider(sessionId, idempotencyKey)));
+    throw new BusinessException(ErrorCode.MULTI_ROUND_RESUME_REQUIRED, "请通过简历详情启动多轮面试");
   }
   @GetMapping("/interviews/{sessionId}")
   public Result<InterviewDetailResponse> getInterview(@PathVariable String sessionId) {
@@ -56,7 +59,9 @@ public class MultiRoundController {
   }
   @PostMapping("/interviews/{sessionId}/agent-plan") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<AgentPlanResponse> agentPlan(@PathVariable String sessionId, @Valid @RequestBody AgentPlanRequest request) {
-    InterviewPlan plan = agentOrchestrator.plan(interviewService.getBySessionId(sessionId), request.trigger(), request.context());
+    MultiRoundInterviewEntity interview = interviewService.getBySessionId(sessionId);
+    operationService.requireResumeBound(interview);
+    InterviewPlan plan = agentOrchestrator.plan(interview, request.trigger(), request.context());
     return Result.success(new AgentPlanResponse(plan.roundNo(), plan.roundType(), plan.followUpCount(), plan.categoryKeys(), plan.stepCount()));
   }
   @GetMapping("/interviews/{sessionId}/report")
@@ -83,6 +88,18 @@ public class MultiRoundController {
   @PostMapping("/rounds/{roundId}/finish")
   public Result<RoundResponse> finishRound(@PathVariable Long roundId, @RequestHeader("Idempotency-Key") String idempotencyKey) { return Result.success(RoundResponse.from(operationService.finishRound(roundId, idempotencyKey))); }
 
+  @PostMapping("/interviews/{sessionId}/next-round")
+  public Result<RoundResponse> nextRound(@PathVariable String sessionId, @RequestHeader("Idempotency-Key") String idempotencyKey) {
+    MultiRoundEntity next = operationService.nextRound(sessionId, idempotencyKey);
+    return Result.success(next != null ? RoundResponse.from(next) : null);
+  }
+
+  @GetMapping("/rounds/{roundId}/report")
+  public Result<MultiRoundRoundReportService.RoundReport> roundReport(@PathVariable Long roundId) {
+    return Result.success(operationService.getRoundReport(roundId));
+  }
+
+
   @GetMapping("/algorithm/templates")
   public Result<List<TemplateResponse>> templates() {
     return Result.success(List.of("JAVA", "PYTHON", "CPP").stream().map(language -> new TemplateResponse(language, "v1", templateService.templateFor(language), "AI 静态评审，未执行代码")).toList());
@@ -98,6 +115,7 @@ public class MultiRoundController {
   }
   @PostMapping("/algorithm-submissions/{submissionId}/review") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<StaticReviewResponse> reviewAlgorithm(@PathVariable Long submissionId) {
+    operationService.requireResumeBound(submissionService.get(submissionId).getQuestion().getRound().getInterview());
     return Result.success(StaticReviewResponse.from(algorithmReviewService.review(submissionId)));
   }
 

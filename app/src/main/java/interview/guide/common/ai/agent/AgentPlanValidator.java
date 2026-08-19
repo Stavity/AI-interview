@@ -14,4 +14,10 @@ public class AgentPlanValidator {
     if (plan.stepCount() < 1 || plan.stepCount() > 6) throw new IllegalArgumentException("Agent 规划步骤超出预算");
     if (plan.categoryKeys() == null || plan.categoryKeys().isEmpty()) throw new IllegalArgumentException("Agent 计划必须包含题目分类");
   }
+  public void validate(InterviewPlan plan, AgentBudget budget) {
+    validate(plan);
+    budget.validateStepCount(plan.stepCount());
+    budget.validateFollowUpCount(plan.followUpCount());
+  }
+
 }

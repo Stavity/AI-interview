@@ -19,14 +19,21 @@ public class InterviewAgentOrchestrator {
   private final AgentPlanValidator validator; private final AgentRunAuditService auditService;
   private final AgentRunStepAuditService stepAuditService;
   private final PromptSanitizer promptSanitizer;
+
+  public InterviewPlan plan(MultiRoundInterviewEntity interview, String trigger, InterviewPlanningContext context) {
+    return plan(interview, trigger, context.asPrompt());
+  }
+
   public InterviewPlan plan(MultiRoundInterviewEntity interview, String trigger, String context) {
-    String safeContext = boundedContext(context);
+    AgentBudget budget = AgentBudget.DEFAULT;
+    String safeContext = boundedContext(context, budget);
     var audit = auditService.start(interview, trigger, safeContext);
     long startedAt = System.nanoTime();
     try {
       var converter = new BeanOutputConverter<>(InterviewPlan.class);
       InterviewPlan plan = outputInvoker.invoke(registry.getPlainChatClient(interview.getProviderId()), "你是受控面试规划器。不能调用工具、不能写数据库、不能执行代码。只生成当前或下一轮的结构化计划。\n" + converter.getFormat(), promptSanitizer.wrapWithDelimiters("agent-context", safeContext), converter, ErrorCode.AI_SERVICE_ERROR, "Agent 计划生成失败: ", "[multi-round-agent] ", LoggerFactory.getLogger(InterviewAgentOrchestrator.class));
-      validator.validate(plan);
+      budget.validateOutputLength(plan.toString());
+      validator.validate(plan, budget);
       String output = "round=" + plan.roundNo() + ",type=" + plan.roundType() + ",steps=" + plan.stepCount();
       stepAuditService.record(audit, 1, "PLAN", "provider=" + interview.getProviderId(), output, elapsedMs(startedAt), "SUCCEEDED");
       auditService.succeeded(audit, output);
@@ -36,11 +43,9 @@ public class InterviewAgentOrchestrator {
       auditService.failed(audit, "AGENT_FALLBACK"); return fallback(interview);
     }
   }
-  private String boundedContext(String context) {
+  private String boundedContext(String context, AgentBudget budget) {
     String sanitized = promptSanitizer.sanitize(context == null ? "" : context);
-    if (sanitized.length() > MAX_CONTEXT_LENGTH) {
-      throw new IllegalArgumentException("Agent 上下文超过 12000 字符");
-    }
+    budget.validateInputLength(sanitized);
     return sanitized;
   }
   private long elapsedMs(long startedAt) { return (System.nanoTime() - startedAt) / 1_000_000; }

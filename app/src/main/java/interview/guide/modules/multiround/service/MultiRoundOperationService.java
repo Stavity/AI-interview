@@ -3,6 +3,7 @@ package interview.guide.modules.multiround.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.multiround.model.AlgorithmSubmissionEntity;
+import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
 import interview.guide.modules.multiround.model.MultiRoundEntity;
 import interview.guide.modules.multiround.model.MultiRoundQuestionEntity;
 import interview.guide.modules.multiround.repository.AlgorithmSubmissionRepository;
@@ -20,12 +21,14 @@ public class MultiRoundOperationService {
   private final AlgorithmSubmissionRepository submissionRepository;
   private final MultiRoundIdempotencyService idempotencyService;
   private final MultiRoundLifecycleService lifecycleService;
+  private final MultiRoundInterviewService interviewService;
   private final MultiRoundQuestionService questionService;
   private final AlgorithmSubmissionService submissionService;
 
   @Transactional
   public MultiRoundEntity startRound(Long roundId, String key) {
     MultiRoundEntity round = getRound(roundId);
+    requireResumeBound(round.getInterview());
     if (alreadyHandled(sessionId(round), "START:" + roundId, key)) return round;
     MultiRoundEntity started = lifecycleService.start(roundId);
     idempotencyService.record(sessionId(started), "START:" + roundId, key, started.getInterview(), "ROUND", roundId);
@@ -35,6 +38,7 @@ public class MultiRoundOperationService {
   @Transactional
   public MultiRoundEntity finishRound(Long roundId, String key) {
     MultiRoundEntity round = getRound(roundId);
+    requireResumeBound(round.getInterview());
     if (alreadyHandled(sessionId(round), "FINISH:" + roundId, key)) return round;
     MultiRoundEntity finished = lifecycleService.finish(roundId);
     idempotencyService.record(sessionId(finished), "FINISH:" + roundId, key, finished.getInterview(), "ROUND", roundId);
@@ -44,6 +48,7 @@ public class MultiRoundOperationService {
   @Transactional
   public MultiRoundQuestionEntity addQuestion(Long roundId, String key, String type, String category, String text, String reference) {
     MultiRoundEntity round = getRound(roundId);
+    requireResumeBound(round.getInterview());
     String sessionId = sessionId(round);
     requireKey(key);
     var previous = idempotencyService.find(sessionId, "QUESTION:" + roundId, key);
@@ -59,6 +64,7 @@ public class MultiRoundOperationService {
   @Transactional
   public void answer(Long questionId, String key, String answer) {
     MultiRoundQuestionEntity question = getQuestion(questionId);
+    requireResumeBound(question.getRound().getInterview());
     String sessionId = sessionId(question.getRound());
     if (alreadyHandled(sessionId, "ANSWER:" + questionId, key)) return;
     questionService.answer(questionId, answer);
@@ -68,6 +74,7 @@ public class MultiRoundOperationService {
   @Transactional
   public AlgorithmSubmissionEntity submitAlgorithm(Long questionId, String key, String language, String sourceCode) {
     MultiRoundQuestionEntity question = getQuestion(questionId);
+    requireResumeBound(question.getRound().getInterview());
     String sessionId = sessionId(question.getRound());
     requireKey(key);
     var previous = idempotencyService.find(sessionId, "ALGORITHM_SUBMIT:" + questionId, key);
@@ -78,6 +85,36 @@ public class MultiRoundOperationService {
     AlgorithmSubmissionEntity submission = submissionService.submit(questionId, language, sourceCode);
     idempotencyService.record(sessionId, "ALGORITHM_SUBMIT:" + questionId, key, question.getRound().getInterview(), "ALGORITHM_SUBMISSION", submission.getId());
     return submission;
+  }
+
+
+  @Transactional
+  public MultiRoundEntity nextRound(String sessionId, String key) {
+    requireKey(key);
+    MultiRoundInterviewEntity interview = interviewService.getBySessionId(sessionId);
+    requireResumeBound(interview);
+    if (alreadyHandled(sessionId, "NEXT_ROUND", key)) {
+      return null;
+    }
+    MultiRoundEntity next = lifecycleService.advanceToNextRound(interview.getId());
+    idempotencyService.record(sessionId, "NEXT_ROUND", key, interview, "INTERVIEW", interview.getId());
+    return next;
+  }
+
+  @Transactional(readOnly = true)
+  public MultiRoundRoundReportService.RoundReport getRoundReport(Long roundId) {
+    MultiRoundEntity round = getRound(roundId);
+    if (round.getReportJson() == null) {
+      return new MultiRoundRoundReportService.RoundReport(
+          round.getRoundNo(), round.getRoundType().name(), 0, 0, java.util.Map.of());
+    }
+    try {
+      return new com.fasterxml.jackson.databind.ObjectMapper()
+          .readValue(round.getReportJson(), MultiRoundRoundReportService.RoundReport.class);
+    } catch (Exception e) {
+      return new MultiRoundRoundReportService.RoundReport(
+          round.getRoundNo(), round.getRoundType().name(), 0, 0, java.util.Map.of());
+    }
   }
 
   private boolean alreadyHandled(String sessionId, String operation, String key) {
@@ -101,5 +138,11 @@ public class MultiRoundOperationService {
 
   private String sessionId(MultiRoundEntity round) {
     return round.getInterview().getInterviewSession().getSessionId();
+  }
+
+  public void requireResumeBound(MultiRoundInterviewEntity interview) {
+    if (interview.getInterviewSession() == null || interview.getInterviewSession().getResume() == null) {
+      throw new BusinessException(ErrorCode.MULTI_ROUND_RESUME_REQUIRED, "多轮面试必须绑定简历");
+    }
   }
 }

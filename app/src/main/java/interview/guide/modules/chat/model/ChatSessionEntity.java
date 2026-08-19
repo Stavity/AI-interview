@@ -20,6 +20,7 @@ public class ChatSessionEntity {
   @Column(name = "provider_id", nullable = false, length = 64) private String providerId;
   @Column(name = "provider_fingerprint", nullable = false, length = 64) private String providerFingerprint;
   @Column(name = "message_count", nullable = false) private int messageCount;
+  @Column(name = "summary") private String summary;
   @Column(name = "created_at", nullable = false, updatable = false) private LocalDateTime createdAt;
   @Column(name = "updated_at", nullable = false) private LocalDateTime updatedAt;
   @PrePersist void prePersist() { LocalDateTime now = LocalDateTime.now(); createdAt = now; updatedAt = now; }

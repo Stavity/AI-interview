@@ -28,6 +28,10 @@ public class MultiRoundQuestionService {
   public void answer(Long questionId, String answer) {
     MultiRoundQuestionEntity question = questionRepository.findById(questionId).orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "多轮题目不存在: " + questionId));
     if (question.getStatus() != MultiRoundQuestionEntity.Status.PENDING) return;
+    MultiRoundEntity round = question.getRound();
+    if (round.getStatus() != MultiRoundEntity.Status.IN_PROGRESS) {
+      throw new BusinessException(ErrorCode.ROUND_STATE_INVALID, "题目所属轮次不在进行中");
+    }
     question.setAnswer(answer); question.setStatus(MultiRoundQuestionEntity.Status.ANSWERED); questionRepository.save(question);
   }
 }

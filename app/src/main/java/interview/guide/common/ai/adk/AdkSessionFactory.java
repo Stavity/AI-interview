@@ -15,14 +15,24 @@ public class AdkSessionFactory {
 
   public SessionHandle create(long interviewId, long agentRunId, int roundNo, String contextHash,
       String policyVersion) {
-    String sessionId = "mr-run-" + interviewId + "-" + agentRunId;
+    return createOrResume("mr-workflow-" + interviewId, interviewId, agentRunId, roundNo, contextHash,
+        policyVersion);
+  }
+
+  /** Session ids belong to an interview workflow, not to an individual audit/run. */
+  public SessionHandle createOrResume(String sessionId, long interviewId, long agentRunId, int roundNo,
+      String contextHash, String policyVersion) {
     Map<String, Object> state = new LinkedHashMap<>();
     state.put("interviewId", String.valueOf(interviewId));
     state.put("agentRunId", String.valueOf(agentRunId));
     state.put("roundNo", String.valueOf(roundNo));
     state.put("contextHash", contextHash);
     state.put("policyVersion", policyVersion);
-    sessionService.createSession(APP_NAME, USER_ID, state, sessionId).blockingGet();
+    try {
+      sessionService.createSession(APP_NAME, USER_ID, state, sessionId).blockingGet();
+    } catch (Exception ignored) {
+      // A process-local ADK session may already exist. Durable state lives in the workflow tables.
+    }
     return new SessionHandle(sessionId, Map.copyOf(state));
   }
 

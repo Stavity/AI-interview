@@ -3,7 +3,7 @@ import { skillApi, type SkillDTO, type CategoryDTO } from '../api/skill';
 import { historyApi, type ResumeListItem } from '../api/history';
 import { getSkillIcon } from '../utils/skillIcons';
 
-export type InterviewMode = 'text' | 'voice';
+export type InterviewMode = 'text' | 'voice' | 'multi_round';
 export type Difficulty = 'junior' | 'mid' | 'senior';
 
 export const DIFFICULTY_OPTIONS: { value: Difficulty; label: string; desc: string }[] = [

@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @ExtendWith(MockitoExtension.class)
 class AgentRunAuditServiceTest {
@@ -28,5 +30,16 @@ class AgentRunAuditServiceTest {
     assertThat(run.getRuntimeVersion()).isEqualTo("1.8.0");
     assertThat(run.getRuntimeSessionId()).isEqualTo("mr-run-12-34");
     assertThat(run.getInputHash()).doesNotContain("sensitive resume text");
+  }
+
+  @Test
+  void shouldStartRunInNewTransactionForAdkToolAuditing() throws NoSuchMethodException {
+    Transactional transactional = AgentRunAuditService.class
+        .getMethod("start", MultiRoundInterviewEntity.class, String.class, String.class, String.class,
+            String.class, String.class, String.class)
+        .getAnnotation(Transactional.class);
+
+    assertThat(transactional).isNotNull();
+    assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
   }
 }

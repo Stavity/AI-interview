@@ -8,7 +8,9 @@ import interview.guide.modules.interview.repository.InterviewSessionRepository;
 import interview.guide.modules.multiround.dto.MultiRoundInterviewBootstrapResponse;
 import interview.guide.modules.multiround.dto.StartMultiRoundInterviewRequest;
 import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
+import interview.guide.modules.multiround.model.MultiRoundEntity;
 import interview.guide.modules.multiround.repository.MultiRoundInterviewRepository;
+import interview.guide.modules.multiround.repository.MultiRoundRepository;
 import interview.guide.modules.resume.repository.ResumeAnalysisRepository;
 import interview.guide.modules.resume.repository.ResumeRepository;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +30,8 @@ public class MultiRoundInterviewBootstrapService {
   private final InterviewSessionRepository sessionRepository;
   private final MultiRoundInterviewRepository interviewRepository;
   private final MultiRoundInterviewService interviewService;
+  private final MultiRoundRepository roundRepository;
+  private final MultiRoundLifecycleService lifecycleService;
 
   private static final List<MultiRoundInterviewEntity.Status> ACTIVE_STATUSES = List.of(
       MultiRoundInterviewEntity.Status.CREATED,
@@ -53,8 +57,7 @@ public class MultiRoundInterviewBootstrapService {
     }
 
     String normalizedJd = normalize(request.jdText());
-    String scopeFingerprint = sha256(resumeId + "\n" + request.skillId() + "\n"
-        + request.difficulty() + "\n" + normalizedJd);
+    String scopeFingerprint = scopeFingerprint(resumeId, request.skillId(), request.difficulty(), normalizedJd);
     var active = interviewRepository.findFirstByScopeFingerprintAndStatusIn(
         scopeFingerprint, ACTIVE_STATUSES);
     if (active.isPresent()) {
@@ -84,6 +87,9 @@ public class MultiRoundInterviewBootstrapService {
     interview.setDifficulty(request.difficulty());
     interview.setScopeFingerprint(scopeFingerprint);
     interviewRepository.save(interview);
+    MultiRoundEntity firstRound = roundRepository.findByInterviewIdOrderByRoundNoAsc(interview.getId()).stream()
+        .findFirst().orElseThrow(() -> new IllegalStateException("多轮面试缺少首轮定义"));
+    lifecycleService.start(firstRound.getId());
     return response(interview, false);
   }
 
@@ -91,6 +97,14 @@ public class MultiRoundInterviewBootstrapService {
   public Optional<MultiRoundInterviewBootstrapResponse> findActive(Long resumeId) {
     return interviewRepository.findFirstByInterviewSessionResumeIdAndStatusInOrderByUpdatedAtDesc(
         resumeId, ACTIVE_STATUSES).map(interview -> response(interview, true));
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<MultiRoundInterviewBootstrapResponse> findActive(
+      Long resumeId, String skillId, String difficulty, String jdText) {
+    return interviewRepository.findFirstByScopeFingerprintAndStatusIn(
+        scopeFingerprint(resumeId, skillId, difficulty, normalize(jdText)), ACTIVE_STATUSES)
+        .map(interview -> response(interview, true));
   }
 
   private MultiRoundInterviewBootstrapResponse response(
@@ -105,6 +119,10 @@ public class MultiRoundInterviewBootstrapService {
 
   private String normalize(String value) {
     return value == null ? "" : value.trim().replaceAll("\\s+", " ");
+  }
+
+  private String scopeFingerprint(Long resumeId, String skillId, String difficulty, String normalizedJd) {
+    return sha256(resumeId + "\n" + skillId + "\n" + difficulty + "\n" + normalizedJd);
   }
 
   private String sha256(String value) {

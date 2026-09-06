@@ -17,6 +17,8 @@ import interview.guide.modules.resume.repository.ResumeRepository;
 import interview.guide.modules.interview.repository.InterviewSessionRepository;
 import interview.guide.modules.multiround.dto.StartMultiRoundInterviewRequest;
 import interview.guide.modules.multiround.repository.MultiRoundInterviewRepository;
+import interview.guide.modules.multiround.repository.MultiRoundRepository;
+import interview.guide.modules.multiround.model.MultiRoundEntity;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +32,8 @@ class MultiRoundInterviewBootstrapServiceTest {
   @Mock private InterviewSessionRepository sessionRepository;
   @Mock private MultiRoundInterviewRepository interviewRepository;
   @Mock private MultiRoundInterviewService interviewService;
+  @Mock private MultiRoundRepository roundRepository;
+  @Mock private MultiRoundLifecycleService lifecycleService;
 
   @Test
   void shouldRejectResumeThatHasNotFinishedParsing() {
@@ -37,7 +41,8 @@ class MultiRoundInterviewBootstrapServiceTest {
     resume.setAnalyzeStatus(AsyncTaskStatus.PROCESSING);
     when(resumeRepository.findById(9L)).thenReturn(Optional.of(resume));
     MultiRoundInterviewBootstrapService service = new MultiRoundInterviewBootstrapService(
-        resumeRepository, analysisRepository, sessionRepository, interviewRepository, interviewService);
+        resumeRepository, analysisRepository, sessionRepository, interviewRepository, interviewService,
+        roundRepository, lifecycleService);
 
     assertThatThrownBy(() -> service.start(9L,
         new StartMultiRoundInterviewRequest("java-backend", "mid", "Java JD", false), "key-9"))
@@ -63,8 +68,11 @@ class MultiRoundInterviewBootstrapServiceTest {
     when(sessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(interviewService.createUsingDefaultProvider(any(), any())).thenReturn(interview);
     when(interviewRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    MultiRoundEntity firstRound = new MultiRoundEntity(); firstRound.setId(201L);
+    when(roundRepository.findByInterviewIdOrderByRoundNoAsc(101L)).thenReturn(java.util.List.of(firstRound));
     MultiRoundInterviewBootstrapService service = new MultiRoundInterviewBootstrapService(
-        resumeRepository, analysisRepository, sessionRepository, interviewRepository, interviewService);
+        resumeRepository, analysisRepository, sessionRepository, interviewRepository, interviewService,
+        roundRepository, lifecycleService);
 
     var response = service.start(9L,
         new StartMultiRoundInterviewRequest("java-backend", "mid", " Java JD ", false), "key-9");
@@ -75,5 +83,24 @@ class MultiRoundInterviewBootstrapServiceTest {
     assertThat(interview.getResumeSnapshot()).contains("candidate resume text");
     assertThat(interview.getJdSnapshot()).isEqualTo("Java JD");
     assertThat(interview.getSkillId()).isEqualTo("java-backend");
+  }
+
+  @Test
+  void shouldResumeOnlyTheActiveInterviewWithTheSameScope() {
+    InterviewSessionEntity session = new InterviewSessionEntity();
+    session.setSessionId("multi-round-session");
+    MultiRoundInterviewEntity interview = new MultiRoundInterviewEntity();
+    interview.setId(102L);
+    interview.setInterviewSession(session);
+    interview.setStatus(MultiRoundInterviewEntity.Status.IN_PROGRESS);
+    interview.setCurrentRoundNo(1);
+    when(interviewRepository.findFirstByScopeFingerprintAndStatusIn(any(), any()))
+        .thenReturn(Optional.of(interview));
+    MultiRoundInterviewBootstrapService service = new MultiRoundInterviewBootstrapService(
+        resumeRepository, analysisRepository, sessionRepository, interviewRepository, interviewService,
+        roundRepository, lifecycleService);
+
+    assertThat(service.findActive(9L, "java-backend", "mid", " Java JD "))
+        .hasValueSatisfying(value -> assertThat(value.sessionId()).isEqualTo("multi-round-session"));
   }
 }

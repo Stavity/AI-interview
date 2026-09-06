@@ -24,6 +24,7 @@ public class MultiRoundOperationService {
   private final MultiRoundInterviewService interviewService;
   private final MultiRoundQuestionService questionService;
   private final AlgorithmSubmissionService submissionService;
+  private final AlgorithmSubmissionReviewService algorithmReviewService;
 
   @Transactional
   public MultiRoundEntity startRound(Long roundId, String key) {
@@ -68,7 +69,17 @@ public class MultiRoundOperationService {
     String sessionId = sessionId(question.getRound());
     if (alreadyHandled(sessionId, "ANSWER:" + questionId, key)) return;
     questionService.answer(questionId, answer);
+    lifecycleService.progressAfterCandidateAction(question.getRound().getId());
     idempotencyService.record(sessionId, "ANSWER:" + questionId, key, question.getRound().getInterview(), "QUESTION", questionId);
+  }
+
+  @Transactional
+  public AlgorithmStaticReviewService.Review reviewAlgorithm(Long submissionId) {
+    AlgorithmSubmissionEntity submission = submissionService.get(submissionId);
+    requireResumeBound(submission.getQuestion().getRound().getInterview());
+    AlgorithmStaticReviewService.Review review = algorithmReviewService.review(submissionId);
+    lifecycleService.progressAfterCandidateAction(submission.getQuestion().getRound().getId());
+    return review;
   }
 
   @Transactional

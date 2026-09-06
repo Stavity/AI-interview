@@ -20,10 +20,12 @@ public class AlgorithmSubmissionReviewPersistenceService {
     AlgorithmSubmissionEntity submission = submissionRepository.findById(submissionId)
         .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "算法提交不存在: " + submissionId));
     try {
-      submission.setScore(Math.max(0, Math.min(100, review.score())));
-      submission.setEvaluationJson(objectMapper.writeValueAsString(review));
+      AlgorithmStaticReviewService.Review normalized = AlgorithmStaticReviewService.normalize(review);
+      submission.setScore(normalized.score());
+      submission.setEvaluationJson(objectMapper.writeValueAsString(normalized));
       submission.setEvaluationStatus(AlgorithmSubmissionEntity.EvaluationStatus.COMPLETED);
       submission.setEvaluationErrorCode(null);
+      submission.getQuestion().setStatus(interview.guide.modules.multiround.model.MultiRoundQuestionEntity.Status.EVALUATED);
       return submissionRepository.save(submission);
     } catch (Exception error) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "算法静态评审结果序列化失败");

@@ -19,6 +19,7 @@ import {
 } from './voiceEvaluationStatus.ts';
 import {skillApi, type SkillDTO} from '../api/skill';
 import {getTemplateName} from '../utils/voiceInterview';
+import {ROUTES} from '../constants/routes';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import {
   AlertCircle,
@@ -26,6 +27,7 @@ import {
   ChevronRight,
   Clock,
   Download,
+  FileStack,
   FileText,
   Filter,
   Loader2,
@@ -40,7 +42,7 @@ import {
   Users,
 } from 'lucide-react';
 
-type InterviewType = 'all' | 'text' | 'voice';
+type InterviewType = 'all' | 'text' | 'voice' | 'multi_round';
 type TimeRange = 'all' | '7d' | '30d' | '90d';
 type CompletionFilter = 'all' | 'inProgress' | 'completed';
 
@@ -62,7 +64,7 @@ const ALL_DIRECTIONS_VALUE = '__all_directions__';
 
 interface UnifiedInterviewItem {
   id: string;
-  type: 'text' | 'voice';
+  type: 'text' | 'voice' | 'multi_round';
   sourceType?: string | null;
   title: string;
   sessionId: string;
@@ -185,6 +187,14 @@ function TypeBadge({ item }: { item: UnifiedInterviewItem }) {
       </span>
     );
   }
+  if (item.type === 'multi_round') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-xs font-medium">
+        <FileStack className="w-3 h-3" />
+        多轮
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-xs font-medium">
       <FileText className="w-3 h-3" />
@@ -290,11 +300,13 @@ export default function InterviewHistoryPage({
       const sessions = await interviewApi.listSessions();
       return sessions.map((session: TextSessionMeta) => ({
         id: session.sessionId,
-        type: 'text' as const,
+        type: session.sourceType === 'MULTI_ROUND' ? 'multi_round' as const : 'text' as const,
         sourceType: session.sourceType,
         title: session.sourceType === 'KNOWLEDGE_BASE'
           ? `${getTemplateName(session.skillId, skills)} · 知识库面试`
-          : getTemplateName(session.skillId, skills),
+          : session.sourceType === 'MULTI_ROUND'
+            ? `${getTemplateName(session.skillId, skills)} · 多轮面试`
+            : getTemplateName(session.skillId, skills),
         sessionId: session.sessionId,
         status: session.status,
         evaluateStatus: session.evaluateStatus ?? undefined,
@@ -360,6 +372,8 @@ export default function InterviewHistoryPage({
   const handleRowClick = (item: UnifiedInterviewItem) => {
     if (item.type === 'text') {
       onViewInterview(item.sessionId, item.resumeId);
+    } else if (item.type === 'multi_round') {
+      navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(item.sessionId)}`);
     } else if (item.voiceSessionId) {
       const isLive = isLiveStatus(item.status);
       if (isLive) {
@@ -632,6 +646,7 @@ export default function InterviewHistoryPage({
           { key: 'all', label: '全部' },
           { key: 'text', label: '文字面试' },
           { key: 'voice', label: '语音面试' },
+          { key: 'multi_round', label: '多轮面试' },
         ] as const).map(tab => (
           <button
             key={tab.key}
@@ -821,6 +836,18 @@ export default function InterviewHistoryPage({
                             <PlayCircle className="w-4 h-4" />
                           </button>
                         )}
+                        {item.type === 'multi_round' && !isCompletedStatus(item.status) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(item.sessionId)}`);
+                            }}
+                            className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                            title="继续多轮面试"
+                          >
+                            <PlayCircle className="w-4 h-4" />
+                          </button>
+                        )}
                         {isEvaluateCompleted(item) && item.type === 'text' && (
                           <button
                             onClick={(e) => handleExport(item.sessionId, e)}
@@ -858,14 +885,14 @@ export default function InterviewHistoryPage({
                             )}
                           </button>
                         )}
-                        <button
+                        {item.type !== 'multi_round' && <button
                             onClick={(e) => handleDeleteClick(item, e)}
                             disabled={deletingSessionId === item.sessionId}
                             className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors disabled:opacity-50"
                             title="删除"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
+                          </button>}
                         <ChevronRight className="w-5 h-5 text-slate-300 dark:text-slate-600 group-hover:text-primary-500 group-hover:translate-x-1 transition-all"/>
                       </div>
                     </td>

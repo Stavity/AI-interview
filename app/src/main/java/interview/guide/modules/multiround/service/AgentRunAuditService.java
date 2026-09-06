@@ -8,16 +8,17 @@ import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service @RequiredArgsConstructor
 public class AgentRunAuditService {
   private final AgentRunAuditRepository repository;
-  @Transactional
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public AgentRunAuditEntity start(MultiRoundInterviewEntity interview, String triggerType, String input) {
     return start(interview, triggerType, input, "LEGACY", null, null, null);
   }
-  @Transactional
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public AgentRunAuditEntity start(MultiRoundInterviewEntity interview, String triggerType, String input,
       String runtimeType, String runtimeVersion, String runtimeSessionId, String policyVersion) {
     var run = new AgentRunAuditEntity();

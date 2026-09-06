@@ -23,6 +23,7 @@ public class MultiRoundInterviewService {
   private final InterviewSessionRepository sessionRepository; private final MultiRoundInterviewRepository interviewRepository; private final MultiRoundRepository roundRepository;
   private final LlmGlobalSettingRepository settingRepository; private final LlmProviderRepository providerRepository;
   private final MultiRoundIdempotencyService idempotencyService;
+  private final MultiRoundWorkflowService workflowService;
   @Transactional
   public MultiRoundInterviewEntity createUsingDefaultProvider(String sessionId) {
     String providerId = settingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID).map(LlmGlobalSettingEntity::getDefaultChatProviderId).orElseThrow(() -> new BusinessException(ErrorCode.PROVIDER_NOT_FOUND, "未配置默认 Chat Provider"));
@@ -47,7 +48,9 @@ public class MultiRoundInterviewService {
     var interview = new MultiRoundInterviewEntity(); interview.setInterviewSession(session); interview.setProviderId(providerId); interview.setProviderFingerprint(providerFingerprint); interview.setStatus(MultiRoundInterviewEntity.Status.ROUND_READY); interview = interviewRepository.save(interview);
     MultiRoundInterviewEntity saved = interview;
     List<MultiRoundEntity> rounds = MultiRoundStateMachine.defaultRounds().stream().map(type -> { var round = new MultiRoundEntity(); round.setInterview(saved); round.setRoundNo(MultiRoundStateMachine.defaultRounds().indexOf(type) + 1); round.setRoundType(MultiRoundEntity.Type.valueOf(type)); round.setQuestionLimit(3); return round; }).toList();
-    roundRepository.saveAll(rounds); return interview;
+    List<MultiRoundEntity> savedRounds = roundRepository.saveAll(rounds);
+    workflowService.initialize(interview, savedRounds);
+    return interview;
   }
   private String fingerprint(LlmProviderEntity provider) { try { byte[] digest = MessageDigest.getInstance("SHA-256").digest((provider.getBaseUrl().trim() + "\n" + provider.getModel().trim() + "\n" + provider.getTemperature()).getBytes(StandardCharsets.UTF_8)); StringBuilder value = new StringBuilder(64); for (byte b : digest) value.append(String.format("%02x", b)); return value.toString(); } catch (Exception error) { throw new IllegalStateException(error); } }
 }

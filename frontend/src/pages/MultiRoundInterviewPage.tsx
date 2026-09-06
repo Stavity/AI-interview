@@ -1,6 +1,6 @@
 import { FormEvent, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ChevronRight, Clock, Loader2, Play, Square } from 'lucide-react';
+import { AlertCircle, ChevronRight, Clock, Loader2 } from 'lucide-react';
 import { multiRoundApi, type AgentRunTrace, type MultiRoundDetail, type MultiRoundQuestion, type MultiRoundReport } from '../api/multiRound';
 import { learningApi, type InterviewRecommendationPreview } from '../api/learning';
 
@@ -20,6 +20,40 @@ const ROUND_COLORS: Record<string, string> = {
   HR: 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20',
 };
 
+type AlgorithmProblem = {
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string[];
+  examples: Array<{ input: string; output: string; explanation?: string }>;
+};
+
+function readAlgorithmProblem(problemJson?: string): AlgorithmProblem | null {
+  if (!problemJson) return null;
+  try {
+    const value = JSON.parse(problemJson) as Partial<AlgorithmProblem>;
+    if (!value.title || !value.description || !value.inputFormat || !value.outputFormat) return null;
+    return { title: value.title, description: value.description, inputFormat: value.inputFormat,
+      outputFormat: value.outputFormat, constraints: value.constraints ?? [], examples: value.examples ?? [] };
+  } catch { return null; }
+}
+
+function AlgorithmProblemStatement({ question }: { question: MultiRoundQuestion }) {
+  const problem = readAlgorithmProblem(question.problemJson);
+  if (!problem) return <p className="mt-3 whitespace-pre-wrap text-slate-900 dark:text-white">{question.question}</p>;
+  return <div className="mt-3 space-y-4 text-sm text-slate-800 dark:text-slate-100">
+    <h3 className="text-base font-semibold text-slate-950 dark:text-white">{problem.title}</h3>
+    <p className="whitespace-pre-wrap leading-6">{problem.description}</p>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div><p className="font-medium">输入格式</p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{problem.inputFormat}</p></div>
+      <div><p className="font-medium">输出格式</p><p className="mt-1 whitespace-pre-wrap text-slate-600 dark:text-slate-300">{problem.outputFormat}</p></div>
+    </div>
+    {problem.constraints.length > 0 && <div><p className="font-medium">约束范围</p><ul className="mt-1 list-disc space-y-1 pl-5 text-slate-600 dark:text-slate-300">{problem.constraints.map((constraint, index) => <li key={index}>{constraint}</li>)}</ul></div>}
+    {problem.examples.map((example, index) => <div key={index} className="rounded-lg bg-slate-50 p-3 font-mono text-xs dark:bg-slate-800"><p>输入：{example.input}</p><p className="mt-1">输出：{example.output}</p>{example.explanation && <p className="mt-2 whitespace-pre-wrap font-sans text-slate-600 dark:text-slate-300">说明：{example.explanation}</p>}</div>)}
+  </div>;
+}
+
 export default function MultiRoundInterviewPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -34,6 +68,7 @@ export default function MultiRoundInterviewPage() {
   const [traces, setTraces] = useState<AgentRunTrace[]>([]);
   const [learningPreview, setLearningPreview] = useState<InterviewRecommendationPreview | null>(null);
   const [activeRoundId, setActiveRoundId] = useState<number | null>(null);
+  const [selectedAlgorithmQuestionId, setSelectedAlgorithmQuestionId] = useState<number | null>(null);
   const answerKeys = useRef(new Map<number, string>());
 
   const reloadInterview = async (sid: string) => {
@@ -74,6 +109,19 @@ export default function MultiRoundInterviewPage() {
       .finally(() => setLoading(false));
   }, [activeSessionId, navigate]);
 
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const heartbeat = () => { void multiRoundApi.heartbeat(activeSessionId).catch(() => undefined); };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 30_000);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') heartbeat(); };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [activeSessionId]);
+
   const submitAnswer = async (event: FormEvent) => {
     event.preventDefault();
     const item = questions.find(q => q.status === 'PENDING');
@@ -84,29 +132,9 @@ export default function MultiRoundInterviewPage() {
       await multiRoundApi.answerQuestion(item.id, key, answer);
       setQuestions(prev => prev.map(q => q.id === item.id ? { ...q, answer, status: 'ANSWERED' } : q));
       setAnswer('');
+      await reloadInterview(activeSessionId);
     } catch {
       setError('提交回答失败');
-    }
-  };
-
-  const startRound = async (id: number) => {
-    setError('');
-    try {
-      await multiRoundApi.startRound(id, `round-start:${id}:${crypto.randomUUID()}`);
-      await reloadInterview(activeSessionId);
-    } catch {
-      setError('轮次启动失败');
-    }
-  };
-
-  const finishRound = async (id: number) => {
-    setError('');
-    try {
-      await multiRoundApi.finishRound(id, `round-finish:${id}:${crypto.randomUUID()}`);
-      await multiRoundApi.nextRound(activeSessionId, `next-round:${id}:${crypto.randomUUID()}`);
-      await reloadInterview(activeSessionId);
-    } catch {
-      setError('当前轮次尚不能结束');
     }
   };
 
@@ -131,6 +159,19 @@ export default function MultiRoundInterviewPage() {
 
   const currentRound = interview?.rounds.find(r => r.id === activeRoundId);
   const isAlgorithmRound = currentRound?.roundType === 'ALGORITHM';
+  const algorithmQuestions = isAlgorithmRound ? questions : [];
+  const selectedAlgorithmQuestion = algorithmQuestions.find(question => question.id === selectedAlgorithmQuestionId)
+    ?? algorithmQuestions[0];
+
+  useEffect(() => {
+    if (!isAlgorithmRound || algorithmQuestions.length === 0) {
+      setSelectedAlgorithmQuestionId(null);
+      return;
+    }
+    if (!algorithmQuestions.some(question => question.id === selectedAlgorithmQuestionId)) {
+      setSelectedAlgorithmQuestionId(algorithmQuestions[0].id);
+    }
+  }, [isAlgorithmRound, algorithmQuestions, selectedAlgorithmQuestionId]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -173,22 +214,6 @@ export default function MultiRoundInterviewPage() {
                     {round.status === 'IN_PROGRESS' && <Clock className="w-3 h-3 text-primary-600" />}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">{round.status} · 最多 {round.questionLimit} 题</p>
-                  {round.status === 'PENDING' && round.roundNo === interview.interview.currentRoundNo + 1 && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); startRound(round.id); }}
-                      className="mt-2 flex items-center gap-1 rounded-md bg-primary-600 px-2 py-1 text-xs text-white"
-                    >
-                      <Play className="w-3 h-3" /> 启动本轮
-                    </button>
-                  )}
-                  {round.status === 'IN_PROGRESS' && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); finishRound(round.id); }}
-                      className="mt-2 flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600"
-                    >
-                      <Square className="w-3 h-3" /> 结束本轮
-                    </button>
-                  )}
                 </button>
               ))}
             </div>
@@ -203,10 +228,27 @@ export default function MultiRoundInterviewPage() {
                   {ROUND_LABELS[currentRound.roundType] ?? currentRound.roundType} · 题目
                 </h2>
               </div>
-              {questions.map(question => (
+              {isAlgorithmRound && (
+                <div role="tablist" aria-label="算法题目" className="grid grid-cols-3 gap-2">
+                  {algorithmQuestions.map(question => (
+                    <button
+                      key={question.id}
+                      role="tab"
+                      aria-selected={question.id === selectedAlgorithmQuestion?.id}
+                      onClick={() => setSelectedAlgorithmQuestionId(question.id)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-medium ${question.id === selectedAlgorithmQuestion?.id
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-200'
+                        : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}
+                    >
+                      第 {question.sequenceNo} 题 · {question.status === 'EVALUATED' ? '已评审' : question.status === 'ANSWERED' ? '待评审' : '待完成'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(isAlgorithmRound ? selectedAlgorithmQuestion ? [selectedAlgorithmQuestion] : [] : questions).map(question => (
                 <article key={question.id} className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
                   <p className="text-xs text-primary-600">第 {question.sequenceNo} 题 · {question.categoryKey || question.questionType}</p>
-                  <p className="mt-3 text-slate-900 dark:text-white">{question.question}</p>
+                  {isAlgorithmRound ? <AlgorithmProblemStatement question={question} /> : <p className="mt-3 text-slate-900 dark:text-white">{question.question}</p>}
                   {question.status === 'PENDING' && !isAlgorithmRound && (
                     <form onSubmit={submitAnswer} className="mt-4">
                       <textarea
@@ -227,9 +269,18 @@ export default function MultiRoundInterviewPage() {
           )}
 
           {/* Algorithm editor for algorithm round */}
-          {isAlgorithmRound && currentRound && questions.length > 0 && (
+          {isAlgorithmRound && currentRound && selectedAlgorithmQuestion && (
             <Suspense fallback={<div className="rounded-xl border border-slate-200 p-4 text-sm text-slate-500 dark:border-slate-700">加载代码编辑器…</div>}>
-              <AlgorithmEditor questionId={questions[0].id} />
+              <AlgorithmEditor
+                key={selectedAlgorithmQuestion.id}
+                questionId={selectedAlgorithmQuestion.id}
+                onReviewed={() => {
+                  setQuestions(prev => prev.map(question => question.id === selectedAlgorithmQuestion.id
+                    ? { ...question, status: 'EVALUATED' }
+                    : question));
+                  void reloadInterview(activeSessionId);
+                }}
+              />
             </Suspense>
           )}
 

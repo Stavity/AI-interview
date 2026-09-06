@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -27,7 +28,11 @@ public class ResumeMultiRoundController {
   }
 
   @GetMapping("/api/resumes/{resumeId}/multi-round-interviews/active")
-  public Result<MultiRoundInterviewBootstrapResponse> active(@PathVariable Long resumeId) {
-    return Result.success(bootstrapService.findActive(resumeId).orElse(null));
+  public Result<MultiRoundInterviewBootstrapResponse> active(
+      @PathVariable Long resumeId,
+      @RequestParam String skillId,
+      @RequestParam String difficulty,
+      @RequestParam(required = false) String jdText) {
+    return Result.success(bootstrapService.findActive(resumeId, skillId, difficulty, jdText).orElse(null));
   }
 }

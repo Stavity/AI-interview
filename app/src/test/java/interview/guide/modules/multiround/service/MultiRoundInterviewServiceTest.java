@@ -29,6 +29,7 @@ class MultiRoundInterviewServiceTest {
   @Mock private LlmGlobalSettingRepository settingRepository;
   @Mock private LlmProviderRepository providerRepository;
   @Mock private MultiRoundIdempotencyService idempotencyService;
+  @Mock private MultiRoundWorkflowService workflowService;
 
   @Test
   @DisplayName("创建多轮扩展时生成连续的默认四轮")
@@ -40,7 +41,7 @@ class MultiRoundInterviewServiceTest {
     when(interviewRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(roundRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-    MultiRoundInterviewEntity result = new MultiRoundInterviewService(sessionRepository, interviewRepository, roundRepository, settingRepository, providerRepository, idempotencyService)
+    MultiRoundInterviewEntity result = new MultiRoundInterviewService(sessionRepository, interviewRepository, roundRepository, settingRepository, providerRepository, idempotencyService, workflowService)
         .create("session-7", "provider-a", "fingerprint");
 
     assertThat(result.getStatus()).isEqualTo(MultiRoundInterviewEntity.Status.ROUND_READY);
@@ -58,7 +59,7 @@ class MultiRoundInterviewServiceTest {
     when(settingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID)).thenReturn(Optional.of(setting));
     when(providerRepository.findById("provider-a")).thenReturn(Optional.of(provider));
     when(interviewRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0)); when(roundRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
-    MultiRoundInterviewEntity result = new MultiRoundInterviewService(sessionRepository, interviewRepository, roundRepository, settingRepository, providerRepository, idempotencyService).createUsingDefaultProvider("session-8");
+    MultiRoundInterviewEntity result = new MultiRoundInterviewService(sessionRepository, interviewRepository, roundRepository, settingRepository, providerRepository, idempotencyService, workflowService).createUsingDefaultProvider("session-8");
     assertThat(result.getProviderId()).isEqualTo("provider-a"); assertThat(result.getProviderFingerprint()).hasSize(64);
   }
 

@@ -8,6 +8,7 @@ import {
 import { type SkillDTO } from '../api/skill';
 import { interviewApi, type TextSessionMeta } from '../api/interview';
 import { voiceInterviewApi, type SessionMeta } from '../api/voiceInterview';
+import { multiRoundApi } from '../api/multiRound';
 import { getSkillIcon } from '../utils/skillIcons';
 import { getTemplateName } from '../utils/voiceInterview';
 import { getScoreTextColor } from '../utils/score';
@@ -23,7 +24,7 @@ import {ROUTES} from '../constants/routes';
 // 统一的面试记录项
 interface RecentInterviewItem {
   id: string;
-  type: 'text' | 'voice';
+  type: 'text' | 'voice' | 'multi_round';
   title: string;
   status: string;
   evaluateStatus?: string | null;
@@ -40,6 +41,8 @@ export default function InterviewHubPage() {
   // === 最近面试记录 ===
   const [recentInterviews, setRecentInterviews] = useState<RecentInterviewItem[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [startError, setStartError] = useState('');
+  const [preparingMultiRound, setPreparingMultiRound] = useState(false);
 
   const loadRecentInterviews = useCallback(async (allSkills: SkillDTO[]) => {
     setLoadingRecent(true);
@@ -52,8 +55,10 @@ export default function InterviewHubPage() {
       const items: RecentInterviewItem[] = [
         ...textSessions.map(s => ({
           id: s.sessionId,
-          type: 'text' as const,
-          title: getTemplateName(s.skillId, allSkills),
+          type: s.sourceType === 'MULTI_ROUND' ? 'multi_round' as const : 'text' as const,
+          title: s.sourceType === 'MULTI_ROUND'
+            ? `${getTemplateName(s.skillId, allSkills)} · 多轮面试`
+            : getTemplateName(s.skillId, allSkills),
           status: s.status,
           evaluateStatus: s.evaluateStatus,
           overallScore: s.overallScore,
@@ -89,15 +94,38 @@ export default function InterviewHubPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleStart = () => {
+  const handleStart = async () => {
     const selectedSkill = config.selectedSkill;
     const skillName = selectedSkill?.name || '自定义';
+    setStartError('');
 
     if (config.isCustomStartDisabled) {
       return;
     }
 
-    if (config.mode === 'text') {
+    if (config.mode === 'multi_round') {
+      const resume = config.resumes.find(item => item.id === config.resumeId);
+      if (!resume || resume.analyzeStatus !== 'COMPLETED') {
+        setStartError('请选择已完成解析和分析的简历');
+        return;
+      }
+      const payload = {
+        skillId: config.skillId,
+        difficulty: config.difficulty,
+        jdText: config.isCustomSkill ? config.parsedCustomJdText || undefined : undefined,
+      };
+      try {
+        setPreparingMultiRound(true);
+        const active = await multiRoundApi.getActiveForResume(resume.id, payload);
+        const interview = active ?? await multiRoundApi.startForResume(
+          resume.id, payload, `multi-round-resume:${resume.id}:${crypto.randomUUID()}`);
+        navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(interview.sessionId)}`);
+      } catch (error) {
+        setStartError(error instanceof Error ? error.message : '多轮面试启动失败');
+      } finally {
+        setPreparingMultiRound(false);
+      }
+    } else if (config.mode === 'text') {
       navigate(ROUTES.interviewCreate(crypto.randomUUID()), {
         state: {
           resumeId: config.resumeId,
@@ -150,7 +178,7 @@ export default function InterviewHubPage() {
             <label className="flex items-center gap-2 mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
               面试模式
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {([
                 {
                   value: 'text' as InterviewMode,
@@ -164,6 +192,13 @@ export default function InterviewHubPage() {
                   label: '语音面试',
                   icon: Mic,
                   desc: '实时语音对话，更偏临场模拟',
+                  recommended: false,
+                },
+                {
+                  value: 'multi_round' as InterviewMode,
+                  label: '多轮面试',
+                  icon: FileStack,
+                  desc: '绑定简历，完成算法、技术与 HR 分轮模拟',
                   recommended: false,
                 },
               ]).map(opt => {
@@ -358,7 +393,7 @@ export default function InterviewHubPage() {
           </button>
 
           <AnimatePresence>
-            {config.showMore && (
+            {(config.showMore || config.mode === 'multi_round') && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
@@ -370,7 +405,7 @@ export default function InterviewHubPage() {
                   <div className="flex items-center gap-3 mb-3">
                     <FileStack className="w-5 h-5 text-primary-500" />
                     <p className="font-semibold text-sm text-primary-900 dark:text-primary-100">
-                      基于简历面试（可选）
+                      基于简历面试{config.mode === 'multi_round' ? '（必选）' : '（可选）'}
                     </p>
                   </div>
                   <select
@@ -380,7 +415,7 @@ export default function InterviewHubPage() {
                       bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white
                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 transition-shadow"
                   >
-                    <option value="">不使用简历（通用提问）</option>
+                    {config.mode !== 'multi_round' && <option value="">不使用简历（通用提问）</option>}
                     {config.resumes.map(r => (
                       <option key={r.id} value={r.id}>{r.filename}</option>
                     ))}
@@ -441,18 +476,20 @@ export default function InterviewHubPage() {
           </AnimatePresence>
         </div>
 
+        {startError && <p className="mt-4 text-sm text-red-600 dark:text-red-400">{startError}</p>}
+
         {/* 开始面试按钮 */}
         <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700">
           <motion.button
             onClick={handleStart}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
-            disabled={config.isCustomStartDisabled}
+            disabled={config.isCustomStartDisabled || preparingMultiRound}
             className="w-full px-6 py-3 rounded-xl font-semibold text-sm transition-all
               bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700
               text-white shadow-lg shadow-primary-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            开始{config.mode === 'text' ? '文字' : '语音'}面试
+            {preparingMultiRound ? '正在准备首轮题目...' : `开始${config.mode === 'text' ? '文字' : config.mode === 'voice' ? '语音' : '多轮'}面试`}
           </motion.button>
         </div>
       </div>
@@ -491,6 +528,8 @@ export default function InterviewHubPage() {
                   onClick={() => {
                     if (item.type === 'text') {
                       navigate(`/interviews/${item.id}`);
+                    } else if (item.type === 'multi_round') {
+                      navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(item.id)}`);
                     } else if (item.voiceSessionId) {
                       navigate(`/voice-interview/${item.voiceSessionId}/evaluation`);
                     }
@@ -501,9 +540,11 @@ export default function InterviewHubPage() {
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
                     item.type === 'text'
                       ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                      : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                      : item.type === 'multi_round'
+                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                        : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                   }`}>
-                    {item.type === 'text' ? <FileText className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    {item.type === 'text' ? <FileText className="w-5 h-5" /> : item.type === 'multi_round' ? <FileStack className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </div>
 
                   {/* 信息 */}
@@ -513,9 +554,11 @@ export default function InterviewHubPage() {
                       <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                         item.type === 'text'
                           ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                          : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
+                          : item.type === 'multi_round'
+                            ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
+                            : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
                       }`}>
-                        {item.type === 'text' ? '文字' : '语音'}
+                        {item.type === 'text' ? '文字' : item.type === 'multi_round' ? '多轮' : '语音'}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1">

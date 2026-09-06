@@ -13,8 +13,10 @@ public class MultiRoundQuestionEntity {
   @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "round_id", nullable = false) private MultiRoundEntity round;
   @Column(name = "sequence_no", nullable = false) private int sequenceNo;
   @Column(name = "question_type", nullable = false) private String questionType;
+  @Column(length = 16) private String difficulty;
   @Column(name = "category_key") private String categoryKey;
   @Column(nullable = false, columnDefinition = "TEXT") private String question;
+  @Column(name = "problem_json", columnDefinition = "TEXT") private String problemJson;
   @Column(name = "reference_answer", columnDefinition = "TEXT") private String referenceAnswer;
   @Column(columnDefinition = "TEXT") private String answer;
   @Enumerated(EnumType.STRING) @Column(nullable = false) private Status status = Status.PENDING;

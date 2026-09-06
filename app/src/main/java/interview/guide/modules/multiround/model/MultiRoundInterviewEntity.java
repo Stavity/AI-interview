@@ -12,12 +12,16 @@ import lombok.Setter;
 @Getter @Setter @NoArgsConstructor
 public class MultiRoundInterviewEntity {
   public enum Status { CREATED, ROUND_READY, IN_PROGRESS, ROUND_EVALUATING, ROUND_COMPLETED, COMPLETED, FAILED }
+  /** The execution mode is chosen once at creation and never switches back from fallback. */
+  public enum OrchestrationMode { STATIC, GOOGLE_ADK, STATIC_FALLBACK }
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
   @OneToOne(fetch = FetchType.LAZY) @JoinColumn(name = "interview_session_id", nullable = false, unique = true) private InterviewSessionEntity interviewSession;
   @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) private Status status = Status.CREATED;
   @Column(name = "current_round_no", nullable = false) private int currentRoundNo;
   @Column(name = "provider_id", length = 64) private String providerId;
   @Column(name = "provider_fingerprint", length = 64) private String providerFingerprint;
+  @Enumerated(EnumType.STRING) @Column(name = "orchestration_mode", nullable = false, length = 32)
+  private OrchestrationMode orchestrationMode = OrchestrationMode.STATIC;
   @Column(name = "resume_snapshot", columnDefinition = "TEXT") private String resumeSnapshot;
   @Column(name = "resume_snapshot_version", length = 64) private String resumeSnapshotVersion;
   @Column(name = "jd_snapshot", columnDefinition = "TEXT") private String jdSnapshot;

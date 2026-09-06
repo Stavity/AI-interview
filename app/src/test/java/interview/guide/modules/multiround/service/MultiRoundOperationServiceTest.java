@@ -33,6 +33,7 @@ class MultiRoundOperationServiceTest {
   @Mock private MultiRoundQuestionService questionService;
   @Mock private AlgorithmSubmissionService submissionService;
   @Mock private MultiRoundInterviewService interviewService;
+  @Mock private AlgorithmSubmissionReviewService algorithmReviewService;
 
   @Test @DisplayName("重复回答请求不会再次修改题目")
   void shouldIgnoreDuplicateAnswer() {
@@ -62,6 +63,6 @@ class MultiRoundOperationServiceTest {
   }
 
   private MultiRoundOperationService service() {
-    return new MultiRoundOperationService(roundRepository, questionRepository, submissionRepository, idempotencyService, lifecycleService, interviewService, questionService, submissionService);
+    return new MultiRoundOperationService(roundRepository, questionRepository, submissionRepository, idempotencyService, lifecycleService, interviewService, questionService, submissionService, algorithmReviewService);
   }
 }

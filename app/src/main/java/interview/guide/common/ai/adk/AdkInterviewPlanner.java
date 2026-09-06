@@ -1,6 +1,8 @@
 package interview.guide.common.ai.adk;
 
 import com.google.adk.agents.LlmAgent;
+import com.google.adk.agents.BaseAgent;
+import com.google.adk.agents.SequentialAgent;
 import com.google.adk.events.Event;
 import com.google.adk.runner.Runner;
 import com.google.adk.tools.FunctionTool;
@@ -14,6 +16,7 @@ import interview.guide.common.ai.agent.AgentRunMetrics;
 import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
 import interview.guide.modules.multiround.model.AgentRunAuditEntity;
 import interview.guide.modules.multiround.service.AgentRunStepAuditService;
+import interview.guide.modules.multiround.service.MultiRoundWorkflowService;
 import io.reactivex.rxjava3.core.Flowable;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -26,8 +29,16 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AdkInterviewPlanner {
-  private static final String INSTRUCTION = """
-      你是受控多轮面试规划器。只为当前轮生成 JSON InterviewPlan。
+  private static final String EVIDENCE_INSTRUCTION = """
+      你是候选人证据分析子 Agent。读取允许的只读工具，归纳既往答案和轮次报告中的强项、薄弱点与不确定性。
+      只输出简洁的证据摘要；不得生成题目、修改轮次、写数据库或调用网络。
+      """;
+  private static final String ADAPTATION_INSTRUCTION = """
+      你是面试自适应策略子 Agent。基于本会话中的候选人证据，建议当前轮的覆盖方向和难度倾向。
+      只能使用上下文允许的分类；已开始或已完成的题目不可修改。只输出策略建议，不能写数据库或调用网络。
+      """;
+  private static final String ROOT_INSTRUCTION = """
+      你是多轮面试 RootAgent。综合前序子 Agent 的证据与策略，仅为当前轮生成 JSON InterviewPlan。
       不能更改轮次或轮次类型，不能写数据库、调用网络、执行代码或请求其他会话数据。
       仅可使用已提供的只读工具；题目分类必须来自上下文和工具结果。
       """;
@@ -38,6 +49,7 @@ public class AdkInterviewPlanner {
   private final AgentRuntimeProperties runtimeProperties;
   private final AgentRunMetrics metrics;
   private final AgentRunStepAuditService stepAuditService;
+  private final MultiRoundWorkflowService workflowService;
 
   public AdkPlanResult plan(MultiRoundInterviewEntity interview, InterviewPlanningContext context, AgentRunAuditEntity audit) {
     LlmProviderRegistry.OpenAiCompatibleProvider provider = providerRegistry
@@ -46,23 +58,15 @@ public class AdkInterviewPlanner {
       throw new IllegalStateException("当前 Provider 不具备 ADK OpenAI-compatible 配置");
     }
     String safeContext = promptSanitizer.wrapWithDelimiters("adk-interview-context", context.asPrompt());
-    AdkSessionFactory.SessionHandle session = sessionFactory.create(
+    String persistedSessionId = workflowService.workflow(interview).getAdkSessionId();
+    AdkSessionFactory.SessionHandle session = sessionFactory.createOrResume(
+        persistedSessionId == null || persistedSessionId.isBlank() ? "mr-workflow-" + interview.getId() : persistedSessionId,
         interview.getId(), audit.getId(), context.roundNo(), sha256(safeContext),
         runtimeProperties.getPolicyVersion());
     AdkInterviewReadTools readTools = new AdkInterviewReadTools(context,
         new AdkToolPolicy(runtimeProperties.getMaxToolCalls(), metrics),
         new AdkToolAuditSink(stepAuditService, audit));
-    LlmAgent agent = LlmAgent.builder()
-        .name("interview_planning_agent")
-        .description("Plans one resume-driven interview round")
-        .model(new OpenAiCompatibleAdkModel(provider.model(), provider.baseUrl(), provider.apiKey(),
-            runtimeProperties.getTimeoutMs()))
-        .instruction(INSTRUCTION + "\n" + new BeanOutputConverter<>(InterviewPlan.class).getFormat())
-        .tools(functionTools(readTools))
-        .maxSteps(6)
-        .disallowTransferToParent(true)
-        .disallowTransferToPeers(true)
-        .build();
+    BaseAgent agent = rootAgent(provider, readTools);
     Runner runner = Runner.builder().agent(agent).appName(AdkSessionFactory.APP_NAME)
         .sessionService(sessionFactory.sessionService()).build();
     Event event = awaitFinalEvent(runner.runAsync(AdkSessionFactory.USER_ID, session.sessionId(),
@@ -71,6 +75,34 @@ public class AdkInterviewPlanner {
     String response = event.stringifyContent();
     InterviewPlan plan = new BeanOutputConverter<>(InterviewPlan.class).convert(response);
     return new AdkPlanResult(plan, session.sessionId());
+  }
+
+  private BaseAgent rootAgent(LlmProviderRegistry.OpenAiCompatibleProvider provider,
+      AdkInterviewReadTools readTools) {
+    OpenAiCompatibleAdkModel model = new OpenAiCompatibleAdkModel(provider.model(), provider.baseUrl(),
+        provider.apiKey(), runtimeProperties.getTimeoutMs());
+    LlmAgent evidenceAgent = LlmAgent.builder().name("evidence_agent")
+        .description("Summarizes candidate evidence from persisted interview context")
+        .model(model).instruction(EVIDENCE_INSTRUCTION).tools(functionTools(readTools)).maxSteps(3)
+        .disallowTransferToParent(true).disallowTransferToPeers(true).build();
+    LlmAgent adaptationAgent = LlmAgent.builder().name("adaptation_agent")
+        .description("Adjusts future coverage only at the current safe checkpoint")
+        .model(model).instruction(ADAPTATION_INSTRUCTION).tools(functionTools(readTools)).maxSteps(3)
+        .disallowTransferToParent(true).disallowTransferToPeers(true).build();
+    LlmAgent rootAgent = LlmAgent.builder()
+        .name("root_interview_agent")
+        .description("Produces the bounded plan accepted by the multi-round workflow")
+        .model(new OpenAiCompatibleAdkModel(provider.model(), provider.baseUrl(), provider.apiKey(),
+            runtimeProperties.getTimeoutMs()))
+        .instruction(ROOT_INSTRUCTION + "\n" + new BeanOutputConverter<>(InterviewPlan.class).getFormat())
+        .tools(functionTools(readTools))
+        .maxSteps(6)
+        .disallowTransferToParent(true)
+        .disallowTransferToPeers(true)
+        .build();
+    return SequentialAgent.builder().name("root_interview_workflow")
+        .description("Root workflow: evidence, adaptation, then accepted round plan")
+        .subAgents(evidenceAgent, adaptationAgent, rootAgent).build();
   }
 
   private List<FunctionTool> functionTools(AdkInterviewReadTools tools) {

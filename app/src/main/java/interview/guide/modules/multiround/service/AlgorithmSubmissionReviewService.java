@@ -18,7 +18,7 @@ public class AlgorithmSubmissionReviewService {
     Snapshot snapshot = loadSnapshot(submissionId);
     persistenceService.markPending(submissionId);
     try {
-      AlgorithmStaticReviewService.Review review = staticReviewService.review(snapshot.providerId(), snapshot.language(), snapshot.sourceCode());
+      AlgorithmStaticReviewService.Review review = staticReviewService.review(snapshot.providerId(), snapshot.language(), snapshot.question(), snapshot.sourceCode());
       persistenceService.save(submissionId, review);
       return review;
     } catch (RuntimeException error) {
@@ -33,8 +33,8 @@ public class AlgorithmSubmissionReviewService {
         .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "算法提交不存在: " + submissionId));
     String providerId = submission.getQuestion().getRound().getInterview().getProviderId();
     if (providerId == null || providerId.isBlank()) throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND, "多轮面试未绑定可用 Provider");
-    return new Snapshot(providerId, submission.getLanguage().name(), submission.getSourceCode());
+    return new Snapshot(providerId, submission.getLanguage().name(), submission.getQuestion().getQuestion(), submission.getSourceCode());
   }
 
-  public record Snapshot(String providerId, String language, String sourceCode) {}
+  public record Snapshot(String providerId, String language, String question, String sourceCode) {}
 }

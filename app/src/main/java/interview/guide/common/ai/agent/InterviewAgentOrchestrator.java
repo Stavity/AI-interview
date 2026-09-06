@@ -9,6 +9,8 @@ import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
 import interview.guide.modules.multiround.service.AgentRunAuditService;
 import interview.guide.modules.multiround.service.AgentRunStepAuditService;
+import interview.guide.modules.multiround.service.AdkWorkflowDecisionService;
+import interview.guide.modules.multiround.service.MultiRoundWorkflowService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.converter.BeanOutputConverter;
@@ -24,6 +26,8 @@ public class InterviewAgentOrchestrator {
   private final AdkInterviewPlanner adkInterviewPlanner;
   private final AgentRuntimeProperties runtimeProperties;
   private final AgentRunMetrics metrics;
+  private final AdkWorkflowDecisionService adkDecisionService;
+  private final MultiRoundWorkflowService workflowService;
 
   public InterviewPlan plan(MultiRoundInterviewEntity interview, String trigger, InterviewPlanningContext context) {
     if (runtimeProperties.getRuntime() == AgentRuntimeProperties.Runtime.GOOGLE_ADK) {
@@ -77,10 +81,20 @@ public class InterviewAgentOrchestrator {
         runtimeProperties.getPolicyVersion());
     long startedAt = System.nanoTime();
     try {
+      var accepted = adkDecisionService.acceptedPlan(interview, context);
+      if (accepted.isPresent()) {
+        InterviewPlan plan = accepted.get();
+        stepAuditService.record(audit, 1, "ADK_CHECKPOINT_RESTORE", "checkpoint=ROUND_" + context.roundNo(),
+            "accepted-plan", elapsedMs(startedAt), "SUCCEEDED", "POLICY", null);
+        auditService.succeeded(audit, "checkpoint-restored");
+        metrics.recordRun("GOOGLE_ADK", "SUCCEEDED", trigger, interview.getProviderId(), elapsedMs(startedAt));
+        return plan;
+      }
       var result = adkInterviewPlanner.plan(interview, context, audit);
       auditService.attachRuntimeSession(audit, result.sessionId());
       budget.validateOutputLength(result.plan().toString());
       validator.validate(result.plan(), budget, context);
+      adkDecisionService.acceptPlan(interview, context, result.plan(), result.sessionId());
       String output = "round=" + result.plan().roundNo() + ",type=" + result.plan().roundType()
           + ",steps=" + result.plan().stepCount();
       stepAuditService.record(audit, 1, "ADK_RUNNER", "session=" + result.sessionId(), output,
@@ -93,6 +107,7 @@ public class InterviewAgentOrchestrator {
       stepAuditService.record(audit, 1, "ADK_RUNNER", "runtime=GOOGLE_ADK", "fallback",
           elapsedMs(startedAt), "FAILED", "POLICY", null);
       auditService.failed(audit, reason);
+      workflowService.fallBackToStatic(interview, reason);
       metrics.recordRun("GOOGLE_ADK", "FAILED", trigger, interview.getProviderId(), elapsedMs(startedAt));
       metrics.recordFallback(reason, context.roundType());
       return fallback(interview, context);

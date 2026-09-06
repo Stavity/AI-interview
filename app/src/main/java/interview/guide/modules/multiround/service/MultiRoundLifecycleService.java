@@ -12,6 +12,7 @@ import interview.guide.modules.multiround.repository.MultiRoundQuestionRepositor
 import interview.guide.modules.multiround.service.MultiRoundQuestionGenerationService;
 import interview.guide.modules.multiround.repository.MultiRoundInterviewRepository;
 import interview.guide.modules.multiround.repository.MultiRoundRepository;
+import interview.guide.modules.interview.model.InterviewSessionEntity;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,8 @@ public class MultiRoundLifecycleService {
   private final MultiRoundQuestionGenerationService questionGenerationService;
   private final InterviewAgentOrchestrator agentOrchestrator;
   private final MultiRoundPlanningContextFactory planningContextFactory;
+  private final MultiRoundWorkflowService workflowService;
+  private final MultiRoundFinalReportService finalReportService;
 
   @Transactional
   public MultiRoundEntity start(Long roundId) {
@@ -37,7 +40,8 @@ public class MultiRoundLifecycleService {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "不能跳过未完成的面试轮次");
     }
     InterviewPlanningContext context = planningContextFactory.create(interview, round);
-    InterviewPlan plan = agentOrchestrator.plan(interview, "ROUND_START", context);
+    InterviewPlan plan = workflowService.usesStaticExecutor(interview)
+        ? staticPlan(round, context) : agentOrchestrator.plan(interview, "ROUND_START", context);
     if (plan.roundNo() != round.getRoundNo() || !plan.roundType().equals(round.getRoundType().name())) {
       plan = new InterviewPlan(round.getRoundNo(), round.getRoundType().name(), 0,
           java.util.List.of(round.getRoundType().name()), 1);
@@ -46,8 +50,11 @@ public class MultiRoundLifecycleService {
     if (round.getStartedAt() == null) round.setStartedAt(LocalDateTime.now());
     interview.setCurrentRoundNo(round.getRoundNo());
     interview.setStatus(MultiRoundInterviewEntity.Status.IN_PROGRESS);
+    interview.getInterviewSession().setStatus(
+        InterviewSessionEntity.SessionStatus.IN_PROGRESS);
     if (interview.getStartedAt() == null) interview.setStartedAt(LocalDateTime.now());
     roundRepository.save(round);
+    workflowService.roundStarted(interview, round);
     // Auto-generate questions on first round entry (M-03)
     questionGenerationService.ensureQuestionsGenerated(round, plan, context);
     return round;
@@ -64,6 +71,10 @@ public class MultiRoundLifecycleService {
     if (questions.size() < round.getQuestionLimit() || questions.stream().anyMatch(question -> question.getStatus() == MultiRoundQuestionEntity.Status.PENDING)) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "当前轮次仍有未完成题目");
     }
+    if (round.getRoundType() == MultiRoundEntity.Type.ALGORITHM
+        && questions.stream().anyMatch(question -> question.getStatus() != MultiRoundQuestionEntity.Status.EVALUATED)) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "算法轮题目尚未完成静态评审");
+    }
     round.setStatus(MultiRoundEntity.Status.COMPLETED);
     round.setCompletedAt(LocalDateTime.now());
     round.setReportJson(roundReportService.build(round, questions));
@@ -71,8 +82,15 @@ public class MultiRoundLifecycleService {
     if (round.getRoundType() == MultiRoundEntity.Type.HR) {
       interview.setStatus(MultiRoundInterviewEntity.Status.COMPLETED);
       interview.setCompletedAt(LocalDateTime.now());
+      interview.getInterviewSession().setStatus(
+          InterviewSessionEntity.SessionStatus.COMPLETED);
     } else {
       interview.setStatus(MultiRoundInterviewEntity.Status.ROUND_COMPLETED);
+    }
+    workflowService.roundCompleted(interview, round);
+    if (interview.getStatus() == MultiRoundInterviewEntity.Status.COMPLETED) {
+      workflowService.completed(interview);
+      finalReportService.generate(interview);
     }
     return roundRepository.save(round);
   }
@@ -98,14 +116,41 @@ public class MultiRoundLifecycleService {
     if (currentRound.getRoundType() == MultiRoundEntity.Type.HR) {
       interview.setStatus(MultiRoundInterviewEntity.Status.COMPLETED);
       interviewRepository.save(interview);
+      workflowService.completed(interview);
+      finalReportService.generate(interview);
       return null;
     }
     interview.setStatus(MultiRoundInterviewEntity.Status.ROUND_READY);
     interviewRepository.save(interview);
-    return rounds.stream()
+    MultiRoundEntity next = rounds.stream()
         .filter(r -> r.getRoundNo() == interview.getCurrentRoundNo() + 1)
         .findFirst()
         .orElse(null);
+    if (next != null) workflowService.nextRoundReady(interview, next.getRoundNo());
+    return next;
+  }
+
+  /** Candidate actions are the only trigger; the state machine owns completion and next-round start. */
+  @Transactional
+  public MultiRoundEntity progressAfterCandidateAction(Long roundId) {
+    MultiRoundEntity round = getRound(roundId);
+    if (round.getStatus() != MultiRoundEntity.Status.IN_PROGRESS) return null;
+    var questions = questionRepository.findByRoundIdOrderBySequenceNoAsc(roundId);
+    boolean ready = questions.size() >= round.getQuestionLimit()
+        && questions.stream().noneMatch(question -> question.getStatus() == MultiRoundQuestionEntity.Status.PENDING)
+        && (round.getRoundType() != MultiRoundEntity.Type.ALGORITHM
+            || questions.stream().allMatch(question -> question.getStatus() == MultiRoundQuestionEntity.Status.EVALUATED));
+    if (!ready) return null;
+    finish(roundId);
+    MultiRoundEntity next = advanceToNextRound(round.getInterview().getId());
+    if (next != null) start(next.getId());
+    return next;
+  }
+
+  private InterviewPlan staticPlan(MultiRoundEntity round, InterviewPlanningContext context) {
+    String category = context.allowedCategoryKeys() == null || context.allowedCategoryKeys().isEmpty()
+        ? "general" : context.allowedCategoryKeys().getFirst();
+    return new InterviewPlan(round.getRoundNo(), round.getRoundType().name(), 0, java.util.List.of(category), 1);
   }
 
   private MultiRoundEntity getRound(Long roundId) {

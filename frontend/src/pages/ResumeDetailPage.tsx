@@ -42,14 +42,18 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const startMultiRoundInterview = async () => {
     try {
       setStartingMultiRound(true);
-      const active = await multiRoundApi.getActiveForResume(resumeId);
+      const payload = {
+        skillId: multiRoundSkillId,
+        difficulty: multiRoundDifficulty,
+        jdText: multiRoundJd.trim() || undefined,
+      };
+      const active = await multiRoundApi.getActiveForResume(resumeId, payload);
       if (active) {
         navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(active.sessionId)}`);
         return;
       }
-      const created = await multiRoundApi.startForResume(resumeId, {
-        skillId: multiRoundSkillId, difficulty: multiRoundDifficulty, jdText: multiRoundJd.trim() || undefined,
-      }, `multi-round-resume:${resumeId}:${crypto.randomUUID()}`);
+      const created = await multiRoundApi.startForResume(resumeId, payload,
+        `multi-round-resume:${resumeId}:${crypto.randomUUID()}`);
       navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(created.sessionId)}`);
     } finally {
       setStartingMultiRound(false);

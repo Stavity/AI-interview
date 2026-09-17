@@ -4,7 +4,7 @@ import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.infrastructure.redis.InterviewSessionCache;
 import interview.guide.infrastructure.redis.InterviewSessionCache.CachedSession;
 import interview.guide.infrastructure.redis.RedisService;
-import interview.guide.modules.interview.listener.EvaluateStreamProducer;
+import interview.guide.modules.interview.listener.EvaluateTaskSubmission;
 import interview.guide.modules.interview.model.CreateInterviewRequest;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewSessionDTO;
@@ -43,7 +43,7 @@ class InterviewSessionIdempotencyTest {
   @Mock
   private InterviewSessionCache sessionCache;
   @Mock
-  private EvaluateStreamProducer evaluateStreamProducer;
+  private EvaluateTaskSubmission evaluateTaskSubmission;
   @Mock
   private LlmProviderRegistry llmProviderRegistry;
   @Mock
@@ -61,7 +61,8 @@ class InterviewSessionIdempotencyTest {
         persistenceService,
         sessionCache,
         objectMapper,
-        evaluateStreamProducer,
+        evaluateTaskSubmission,
+        org.mockito.Mockito.mock(interview.guide.common.transaction.TransactionalExecutor.class),
         llmProviderRegistry,
         redisService
     );

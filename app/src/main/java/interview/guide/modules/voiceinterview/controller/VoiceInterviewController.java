@@ -9,7 +9,7 @@ import interview.guide.modules.voiceinterview.dto.SessionMetaDTO;
 import interview.guide.modules.voiceinterview.dto.SessionResponseDTO;
 import interview.guide.modules.voiceinterview.dto.VoiceEvaluationDetailDTO;
 import interview.guide.modules.voiceinterview.dto.VoiceEvaluationStatusDTO;
-import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
+import interview.guide.modules.voiceinterview.listener.VoiceEvaluateTaskSubmission;
 import interview.guide.modules.voiceinterview.dto.VoiceInterviewMessageDTO;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.service.VoiceInterviewEvaluationService;
@@ -49,7 +49,7 @@ public class VoiceInterviewController {
 
     private final VoiceInterviewService voiceInterviewService;
     private final VoiceInterviewEvaluationService evaluationService;
-    private final VoiceEvaluateStreamProducer voiceEvaluateStreamProducer;
+    private final VoiceEvaluateTaskSubmission voiceEvaluateTaskSubmission;
 
     /**
      * Create a new voice interview session
@@ -77,7 +77,7 @@ public class VoiceInterviewController {
     /**
      * End interview session
      * <p>
-     * This also triggers async evaluation via Redis Stream.
+     * This also triggers async evaluation via Kafka.
      * </p>
      */
     @PostMapping("/sessions/{sessionId}/end")
@@ -179,7 +179,7 @@ public class VoiceInterviewController {
     /**
      * Trigger async evaluation for a session
      * <p>
-     * Enqueues evaluation task to Redis Stream and returns immediately.
+     * Enqueues evaluation task to Kafka and returns immediately.
      * Frontend should then poll GET /evaluation to track progress.
      * If evaluation is already in progress or completed, returns current status.
      * </p>

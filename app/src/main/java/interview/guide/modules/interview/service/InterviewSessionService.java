@@ -8,7 +8,7 @@ import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.infrastructure.redis.InterviewSessionCache;
 import interview.guide.infrastructure.redis.InterviewSessionCache.CachedSession;
 import interview.guide.infrastructure.redis.RedisService;
-import interview.guide.modules.interview.listener.EvaluateStreamProducer;
+import interview.guide.modules.interview.listener.EvaluateTaskSubmission;
 import interview.guide.modules.interview.model.CreateInterviewRequest;
 import interview.guide.modules.interview.model.HistoricalQuestion;
 import interview.guide.modules.interview.model.InterviewAnswerEntity;
@@ -51,7 +51,8 @@ public class InterviewSessionService {
     private final InterviewPersistenceService persistenceService;
     private final InterviewSessionCache sessionCache;
     private final ObjectMapper objectMapper;
-    private final EvaluateStreamProducer evaluateStreamProducer;
+    private final EvaluateTaskSubmission evaluateTaskSubmission;
+    private final interview.guide.common.transaction.TransactionalExecutor transactionalExecutor;
     private final LlmProviderRegistry llmProviderRegistry;
     private final RedisService redisService;
 
@@ -430,14 +431,16 @@ public class InterviewSessionService {
 
         SessionStatus newStatus = hasNextQuestion ? SessionStatus.IN_PROGRESS : SessionStatus.COMPLETED;
 
-        persistSubmittedAnswer(request, index, question, newIndex, newStatus);
+        transactionalExecutor.run(() -> {
+            persistSubmittedAnswer(request, index, question, newIndex, newStatus);
+            if (newStatus == SessionStatus.COMPLETED) enqueueEvaluationTask(request.sessionId());
+        });
 
         // 更新 Redis 缓存。DB 已经持久化成功，缓存失败时可由后续读取从数据库恢复。
         sessionCache.updateQuestions(request.sessionId(), questions);
         sessionCache.updateCurrentIndex(request.sessionId(), newIndex);
         if (newStatus == SessionStatus.COMPLETED) {
             sessionCache.updateSessionStatus(request.sessionId(), SessionStatus.COMPLETED);
-            enqueueEvaluationTask(request.sessionId());
         }
 
         log.info("会话 {} 提交答案: 问题{}, 剩余{}题",
@@ -476,8 +479,7 @@ public class InterviewSessionService {
     }
 
     private void enqueueEvaluationTask(String sessionId) {
-        persistenceService.updateEvaluateStatus(sessionId, AsyncTaskStatus.PENDING, null);
-        evaluateStreamProducer.sendEvaluateTask(sessionId);
+        evaluateTaskSubmission.sendEvaluateTask(sessionId);
         log.info("会话 {} 已完成所有问题，评估任务已入队", sessionId);
     }
 
@@ -532,22 +534,13 @@ public class InterviewSessionService {
             throw new BusinessException(ErrorCode.INTERVIEW_ALREADY_COMPLETED);
         }
 
-        // 更新 Redis 缓存
+        // Persist the completion and reliable task submission together.
+        transactionalExecutor.run(() -> {
+            persistenceService.updateSessionStatus(sessionId, InterviewSessionEntity.SessionStatus.COMPLETED);
+            evaluateTaskSubmission.sendEvaluateTask(sessionId);
+        });
+
         sessionCache.updateSessionStatus(sessionId, SessionStatus.COMPLETED);
-
-        // 更新数据库状态
-        try {
-            persistenceService.updateSessionStatus(sessionId,
-                InterviewSessionEntity.SessionStatus.COMPLETED);
-            // 设置评估状态为 PENDING
-            persistenceService.updateEvaluateStatus(sessionId, AsyncTaskStatus.PENDING, null);
-        } catch (Exception e) {
-            log.warn("更新会话状态失败: {}", e.getMessage());
-        }
-
-        // 发送评估任务到 Redis Stream
-        evaluateStreamProducer.sendEvaluateTask(sessionId);
-
         log.info("会话 {} 提前交卷，评估任务已入队", sessionId);
     }
 

@@ -1,6 +1,6 @@
 package interview.guide.modules.knowledgebase.service;
 
-import interview.guide.modules.knowledgebase.listener.QuestionGenStreamProducer;
+import interview.guide.modules.knowledgebase.listener.QuestionGenTaskSubmission;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionDTO;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
@@ -29,7 +29,7 @@ class KnowledgeBaseQuestionServiceTest {
   @Mock
   private KnowledgeBaseQuestionRepository questionRepository;
   @Mock
-  private QuestionGenStreamProducer questionGenStreamProducer;
+  private QuestionGenTaskSubmission questionGenTaskSubmission;
   @Mock
   private QuestionGenerationStateService questionGenerationStateService;
 
@@ -42,7 +42,7 @@ class KnowledgeBaseQuestionServiceTest {
         knowledgeBaseRepository,
         questionRepository,
         objectMapper,
-        questionGenStreamProducer,
+        questionGenTaskSubmission,
         questionGenerationStateService
     );
   }

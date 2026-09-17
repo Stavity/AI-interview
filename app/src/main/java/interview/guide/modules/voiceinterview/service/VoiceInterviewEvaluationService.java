@@ -49,40 +49,32 @@ public class VoiceInterviewEvaluationService {
      * 生成语音面试评估（由异步消费者调用）
      * LLM 调用在事务外执行，仅 DB 写入在事务内
      */
+    public record EvaluationInput(List<QaRecord> questions, String provider, String referenceContext,
+                                  String role, java.time.LocalDateTime startTime) {}
+
+    public EvaluationInput snapshot(Long sessionId) {
+        var session = getSession(sessionId);
+        var messages = messageRepository.findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
+            sessionId, VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY);
+        return new EvaluationInput(buildQaRecords(messages), session.getLlmProvider(),
+            skillService.buildEvaluationReferenceSectionSafe(session.getSkillId()), session.getRoleType(), session.getStartTime());
+    }
+
     public void generateEvaluation(Long sessionId) {
-        try {
-            log.info("开始生成语音面试评估: sessionId={}", sessionId);
+        generateEvaluation(sessionId, snapshot(sessionId), Runnable::run);
+    }
 
-            VoiceInterviewSessionEntity session = getSession(sessionId);
-            List<VoiceInterviewMessageEntity> messages = messageRepository
-                .findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
-                    sessionId, VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY);
-
-            if (messages.isEmpty()) {
-                log.warn("语音面试会话无对话记录，生成空评估结果: sessionId={}", sessionId);
-                saveEmptyEvaluationTransactional(sessionId, session);
-                return;
-            }
-
-            List<QaRecord> qaRecords = buildQaRecords(messages);
-
-            String provider = session.getLlmProvider();
-            ChatClient chatClient = llmProviderRegistry.getChatClientOrDefault(provider);
-
-            String sessionIdStr = String.valueOf(sessionId);
-            String referenceContext = skillService.buildEvaluationReferenceSectionSafe(session.getSkillId());
-            EvaluationReport report = unifiedEvaluationService.evaluate(
-                chatClient, sessionIdStr, qaRecords, null, referenceContext);
-
-            saveEvaluationTransactional(sessionId, session, report);
-
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("生成语音面试评估失败: sessionId={}", sessionId, e);
-            throw new BusinessException(ErrorCode.VOICE_EVALUATION_FAILED,
-                "生成评估失败: " + e.getMessage());
+    public void generateEvaluation(Long sessionId, EvaluationInput input,
+                                   java.util.function.Consumer<Runnable> complete) {
+        var session = VoiceInterviewSessionEntity.builder().id(sessionId)
+            .roleType(input.role()).startTime(input.startTime()).build();
+        if (input.questions().isEmpty()) {
+            complete.accept(() -> saveEmptyEvaluationTransactional(sessionId, session));
+            return;
         }
+        var client = llmProviderRegistry.getChatClientOrDefault(input.provider());
+        var report = unifiedEvaluationService.evaluate(client, sessionId.toString(), input.questions(), null, input.referenceContext());
+        complete.accept(() -> saveEvaluationTransactional(sessionId, session, report));
     }
 
     public VoiceEvaluationDetailDTO getEvaluation(Long sessionId) {
@@ -180,6 +172,9 @@ public class VoiceInterviewEvaluationService {
                 .interviewDate(session.getStartTime())
                 .build();
 
+            evaluationRepository.findBySessionId(sessionId).ifPresent(existing -> {
+                entity.setId(existing.getId()); entity.setCreatedAt(existing.getCreatedAt());
+            });
             evaluationRepository.save(entity);
             log.info("评估结果已保存: sessionId={}, score={}", sessionId, entity.getOverallScore());
         } catch (Exception e) {

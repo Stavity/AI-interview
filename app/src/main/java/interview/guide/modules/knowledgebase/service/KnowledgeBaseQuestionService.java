@@ -3,7 +3,7 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.constant.CommonConstants.InterviewDefaults;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
-import interview.guide.modules.knowledgebase.listener.QuestionGenStreamProducer;
+import interview.guide.modules.knowledgebase.listener.QuestionGenTaskSubmission;
 import interview.guide.modules.knowledgebase.model.CreateKnowledgeBaseQuestionRequest;
 import interview.guide.modules.knowledgebase.model.GenerateKnowledgeBaseQuestionsRequest;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
@@ -44,7 +44,7 @@ public class KnowledgeBaseQuestionService {
   private final KnowledgeBaseRepository knowledgeBaseRepository;
   private final KnowledgeBaseQuestionRepository questionRepository;
   private final ObjectMapper objectMapper;
-  private final QuestionGenStreamProducer questionGenStreamProducer;
+  private final QuestionGenTaskSubmission questionGenTaskSubmission;
   private final QuestionGenerationStateService questionGenerationStateService;
 
   @Transactional(readOnly = true)
@@ -150,8 +150,9 @@ public class KnowledgeBaseQuestionService {
 
   /**
    * 提交异步问题生成任务。
-   * 校验知识库存在且状态允许，更新状态为 QUEUED，然后向 Redis Stream 投递任务。
+   * 校验知识库存在且状态允许，更新状态为 QUEUED，然后向 Kafka 投递任务。
    */
+  @Transactional(rollbackFor = Exception.class)
   public QuestionGenStatusResponse submitGenerationTask(
       Long knowledgeBaseId,
       GenerateKnowledgeBaseQuestionsRequest request) {
@@ -171,7 +172,7 @@ public class KnowledgeBaseQuestionService {
     );
     QuestionGenStatusResponse response =
         questionGenerationStateService.createTask(knowledgeBaseId, config);
-    boolean sent = questionGenStreamProducer.sendGenerateTask(
+    boolean sent = questionGenTaskSubmission.sendGenerateTask(
         knowledgeBaseId, response.questionGenTaskId());
     return sent ? response : questionGenerationStateService.getStatus(knowledgeBaseId);
   }

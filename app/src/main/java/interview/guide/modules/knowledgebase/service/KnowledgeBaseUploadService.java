@@ -5,7 +5,7 @@ import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.file.FileHashService;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.file.FileValidationService;
-import interview.guide.modules.knowledgebase.listener.VectorizeStreamProducer;
+import interview.guide.modules.knowledgebase.listener.VectorizeTaskSubmission;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
@@ -20,7 +20,7 @@ import java.util.Optional;
 /**
  * 知识库上传服务
  * 处理知识库上传、解析的业务逻辑
- * 向量化改为异步处理，通过 Redis Stream 实现
+ * 向量化改为异步处理，通过 Kafka 实现
  */
 @Slf4j
 @Service
@@ -33,7 +33,8 @@ public class KnowledgeBaseUploadService {
     private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final FileValidationService fileValidationService;
     private final FileHashService fileHashService;
-    private final VectorizeStreamProducer vectorizeStreamProducer;
+    private final VectorizeTaskSubmission vectorizeTaskSubmission;
+    private final interview.guide.common.transaction.TransactionalExecutor transactionalExecutor;
 
     private static final long MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
     
@@ -76,10 +77,11 @@ public class KnowledgeBaseUploadService {
         log.info("知识库已存储到RustFS: {}", fileKey);
 
         // 6. 保存知识库元数据到数据库（状态为 PENDING）
-        KnowledgeBaseEntity savedKb = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash);
-
-        // 7. 发送向量化任务到 Redis Stream（异步处理）
-        vectorizeStreamProducer.sendVectorizeTask(savedKb.getId(), content);
+        KnowledgeBaseEntity savedKb = transactionalExecutor.call(() -> {
+            var saved = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash);
+            vectorizeTaskSubmission.sendVectorizeTask(saved.getId(), content);
+            return saved;
+        });
 
         log.info("知识库上传完成，向量化任务已入队: {}, kbId={}", fileName, savedKb.getId());
 
@@ -133,10 +135,7 @@ public class KnowledgeBaseUploadService {
         }
 
         // 2. 更新状态为 PENDING（通过单独的 Service 保证事务生效）
-        persistenceService.updateVectorStatusToPending(kbId);
-
-        // 3. 发送向量化任务到 Stream
-        vectorizeStreamProducer.sendVectorizeTask(kbId, content);
+        vectorizeTaskSubmission.sendVectorizeTask(kbId, content);
 
         log.info("重新向量化任务已发送: kbId={}", kbId);
     }

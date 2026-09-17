@@ -3,7 +3,7 @@ package interview.guide.modules.voiceinterview.service;
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
-import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
+import interview.guide.modules.voiceinterview.listener.VoiceEvaluateTaskSubmission;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionStatus;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewEvaluationRepository;
@@ -52,7 +52,7 @@ class VoiceInterviewEvaluationRecoveryTest {
     private VoiceInterviewProperties properties;
 
     @Mock
-    private VoiceEvaluateStreamProducer voiceEvaluateStreamProducer;
+    private VoiceEvaluateTaskSubmission voiceEvaluateTaskSubmission;
 
     @Mock
     private LlmProviderRegistry llmProviderRegistry;
@@ -70,7 +70,7 @@ class VoiceInterviewEvaluationRecoveryTest {
             evaluationRepository,
             redissonClient,
             properties,
-            voiceEvaluateStreamProducer,
+            voiceEvaluateTaskSubmission,
             llmProviderRegistry
         );
         lenient().when(redissonClient.<VoiceInterviewSessionEntity>getBucket(anyString()))
@@ -87,7 +87,7 @@ class VoiceInterviewEvaluationRecoveryTest {
 
         assertThat(session.getStatus()).isEqualTo(VoiceInterviewSessionStatus.COMPLETED);
         assertThat(session.getEvaluateStatus()).isEqualTo(AsyncTaskStatus.PENDING);
-        verify(voiceEvaluateStreamProducer).sendEvaluateTask("1");
+        verify(voiceEvaluateTaskSubmission).sendEvaluateTask("1");
     }
 
     @Test
@@ -98,41 +98,14 @@ class VoiceInterviewEvaluationRecoveryTest {
             eq(VoiceInterviewSessionStatus.IN_PROGRESS),
             any(LocalDateTime.class)
         )).thenReturn(List.of(session));
-        stubNoStaleEvaluations();
 
         int cleaned = voiceInterviewService.cleanupStaleSessions();
 
         assertThat(cleaned).isEqualTo(1);
-        verify(voiceEvaluateStreamProducer).sendEvaluateTask("2");
+        verify(voiceEvaluateTaskSubmission).sendEvaluateTask("2");
     }
 
-    @Test
-    @DisplayName("长时间停留在 PENDING 的评估应自动重新投递")
-    void shouldRequeueStalePendingEvaluation() {
-        VoiceInterviewSessionEntity session = VoiceInterviewSessionEntity.builder()
-            .id(3L)
-            .status(VoiceInterviewSessionStatus.COMPLETED)
-            .evaluateStatus(AsyncTaskStatus.PENDING)
-            .updatedAt(LocalDateTime.now().minusMinutes(10))
-            .build();
-        when(sessionRepository.findByStatusAndStartTimeBefore(
-            eq(VoiceInterviewSessionStatus.IN_PROGRESS),
-            any(LocalDateTime.class)
-        )).thenReturn(List.of());
-        when(sessionRepository.findByEvaluateStatusAndUpdatedAtBefore(
-            eq(AsyncTaskStatus.PENDING),
-            any(LocalDateTime.class)
-        )).thenReturn(List.of(session));
-        when(sessionRepository.findByEvaluateStatusAndUpdatedAtBefore(
-            eq(AsyncTaskStatus.PROCESSING),
-            any(LocalDateTime.class)
-        )).thenReturn(List.of());
 
-        int cleaned = voiceInterviewService.cleanupStaleSessions();
-
-        assertThat(cleaned).isEqualTo(1);
-        verify(voiceEvaluateStreamProducer).sendEvaluateTask("3");
-    }
 
     @Test
     @DisplayName("评估状态更新后应清除会话缓存")
@@ -149,29 +122,7 @@ class VoiceInterviewEvaluationRecoveryTest {
         verify(sessionBucket).delete();
     }
 
-    @Test
-    @DisplayName("PENDING 评估应在三分钟后进入自动恢复范围")
-    void shouldUseThreeMinutePendingRecoveryThreshold() {
-        when(sessionRepository.findByStatusAndStartTimeBefore(
-            eq(VoiceInterviewSessionStatus.IN_PROGRESS),
-            any(LocalDateTime.class)
-        )).thenReturn(List.of());
-        stubNoStaleEvaluations();
-        ArgumentCaptor<LocalDateTime> thresholdCaptor =
-            ArgumentCaptor.forClass(LocalDateTime.class);
 
-        voiceInterviewService.cleanupStaleSessions();
-
-        verify(sessionRepository).findByEvaluateStatusAndUpdatedAtBefore(
-            eq(AsyncTaskStatus.PENDING),
-            thresholdCaptor.capture()
-        );
-        long thresholdAgeMinutes = Duration.between(
-            thresholdCaptor.getValue(),
-            LocalDateTime.now()
-        ).toMinutes();
-        assertThat(thresholdAgeMinutes).isEqualTo(3);
-    }
 
     private VoiceInterviewSessionEntity inProgressSession(Long sessionId) {
         return VoiceInterviewSessionEntity.builder()
@@ -181,14 +132,4 @@ class VoiceInterviewEvaluationRecoveryTest {
             .build();
     }
 
-    private void stubNoStaleEvaluations() {
-        when(sessionRepository.findByEvaluateStatusAndUpdatedAtBefore(
-            eq(AsyncTaskStatus.PENDING),
-            any(LocalDateTime.class)
-        )).thenReturn(List.of());
-        when(sessionRepository.findByEvaluateStatusAndUpdatedAtBefore(
-            eq(AsyncTaskStatus.PROCESSING),
-            any(LocalDateTime.class)
-        )).thenReturn(List.of());
-    }
 }

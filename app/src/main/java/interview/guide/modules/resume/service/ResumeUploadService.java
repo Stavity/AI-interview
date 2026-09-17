@@ -8,7 +8,7 @@ import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.file.FileValidationService;
 import interview.guide.modules.interview.model.ResumeAnalysisResponse;
-import interview.guide.modules.resume.listener.AnalyzeStreamProducer;
+import interview.guide.modules.resume.listener.AnalyzeTaskSubmission;
 import interview.guide.modules.resume.model.ResumeEntity;
 import interview.guide.modules.resume.repository.ResumeRepository;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +21,7 @@ import java.util.Optional;
 /**
  * 简历上传服务
  * 处理简历上传、解析的业务逻辑
- * AI 分析改为异步处理，通过 Redis Stream 实现
+ * AI 分析改为异步处理，通过 Kafka 实现
  */
 @Slf4j
 @Service
@@ -33,7 +33,7 @@ public class ResumeUploadService {
     private final ResumePersistenceService persistenceService;
     private final AppConfigProperties appConfig;
     private final FileValidationService fileValidationService;
-    private final AnalyzeStreamProducer analyzeStreamProducer;
+    private final AnalyzeTaskSubmission analyzeTaskSubmission;
     private final ResumeRepository resumeRepository;
     private final TransactionalExecutor transactionalExecutor;
 
@@ -85,10 +85,11 @@ public class ResumeUploadService {
             fileKey, System.currentTimeMillis() - storageStart);
 
         // 6. 保存简历到数据库（状态为 PENDING）
-        ResumeEntity savedResume = persistenceService.saveResume(file, resumeText, fileKey, fileUrl);
-
-        // 7. 发送分析任务到 Redis Stream（异步处理）
-        analyzeStreamProducer.sendAnalyzeTask(savedResume.getId(), resumeText);
+        ResumeEntity savedResume = transactionalExecutor.call(() -> {
+            ResumeEntity saved = persistenceService.saveResume(file, resumeText, fileKey, fileUrl);
+            analyzeTaskSubmission.sendAnalyzeTask(saved.getId(), resumeText);
+            return saved;
+        });
 
         long totalTime = System.currentTimeMillis() - startTime;
         log.info("简历上传处理完成: {}, resumeId={} - 总耗时: {}ms (解析+存储+入库)",
@@ -187,11 +188,10 @@ public class ResumeUploadService {
         }
 
         String taskContent = resumeText;
-        transactionalExecutor.run(
-            () -> updateResumeForReanalysis(resumeId, taskContent, shouldCacheResumeText));
-
-        // 事务提交后再发送分析任务到 Stream
-        analyzeStreamProducer.sendAnalyzeTask(resumeId, taskContent);
+        transactionalExecutor.run(() -> {
+            updateResumeForReanalysis(resumeId, taskContent, shouldCacheResumeText);
+            analyzeTaskSubmission.sendAnalyzeTask(resumeId, taskContent);
+        });
 
         log.info("重新分析任务已发送: resumeId={}", resumeId);
     }

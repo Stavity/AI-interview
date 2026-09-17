@@ -3,7 +3,7 @@ package interview.guide.modules.voiceinterview.controller;
 import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.common.result.Result;
 import interview.guide.modules.voiceinterview.dto.VoiceEvaluationStatusDTO;
-import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
+import interview.guide.modules.voiceinterview.listener.VoiceEvaluateTaskSubmission;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.service.VoiceInterviewEvaluationService;
 import interview.guide.modules.voiceinterview.service.VoiceInterviewService;
@@ -32,7 +32,7 @@ class VoiceInterviewControllerEvaluationTest {
     private VoiceInterviewEvaluationService evaluationService;
 
     @Mock
-    private VoiceEvaluateStreamProducer voiceEvaluateStreamProducer;
+    private VoiceEvaluateTaskSubmission voiceEvaluateTaskSubmission;
 
     @InjectMocks
     private VoiceInterviewController controller;

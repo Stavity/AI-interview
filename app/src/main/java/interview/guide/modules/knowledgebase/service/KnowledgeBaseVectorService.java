@@ -62,12 +62,17 @@ public class KnowledgeBaseVectorService {
      * @param content 知识库文本内容
      */
     public void vectorizeAndStore(Long knowledgeBaseId, String content) {
+        vectorizeAndStore(knowledgeBaseId, content, UUID.randomUUID().toString(), this::runVectorRepositoryMutation);
+    }
+
+    public void vectorizeAndStore(Long knowledgeBaseId, String content, String executionId,
+                                  java.util.function.Consumer<Runnable> complete) {
         String jobId = null;
         try {
             if (knowledgeBaseId == null) {
                 throw new IllegalArgumentException("knowledgeBaseId不能为空");
             }
-            jobId = UUID.randomUUID().toString();
+            jobId = executionId;
             log.info("开始向量化知识库: kbId={}, jobId={}, contentLength={}",
                 knowledgeBaseId, jobId, content.length());
 
@@ -93,7 +98,8 @@ public class KnowledgeBaseVectorService {
                 log.debug("处理第 {}/{} 批: chunks {}-{}", i + 1, batchCount, start + 1, end);
                 vectorStore.add(batch);
             }
-            activateVectorJob(knowledgeBaseId, jobId);
+            String completedJobId = jobId;
+            complete.accept(() -> activateVectorJob(knowledgeBaseId, completedJobId));
             log.info("知识库向量化完成: kbId={}, jobId={}, chunks={}, batches={}",
                     knowledgeBaseId, jobId, totalChunks, batchCount);
         } catch (Exception e) {
@@ -111,6 +117,7 @@ public class KnowledgeBaseVectorService {
             chunk.getMetadata().put(METADATA_KB_ID, pendingKbId);
             chunk.getMetadata().put(METADATA_TARGET_KB_ID, knowledgeBaseId.toString());
             chunk.getMetadata().put(METADATA_VECTOR_JOB_ID, jobId);
+            chunk.getMetadata().put("kb_vector_created_at", java.time.Instant.now().toString());
         });
     }
     

@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
 
 /**
  * 知识库问题异步生成服务
- * 由 QuestionGenStreamConsumer 调用，负责实际的 LLM 生成和结果持久化。
+ * 由 KnowledgeBaseQuestionGenerateTaskHandler 调用，负责实际的 LLM 生成和结果持久化。
  * LLM 调用不在事务内；删除旧问题和保存新问题在同一个最小事务中完成。
  */
 @Slf4j
@@ -99,6 +99,11 @@ public class KnowledgeBaseQuestionGenerationService {
       String taskId,
       QuestionGenerationConfig config
   ) {
+    executeGeneration(kbId, taskId, config, Runnable::run);
+  }
+
+  public void executeGeneration(Long kbId, String taskId, QuestionGenerationConfig config,
+                                java.util.function.Consumer<Runnable> complete) {
     KnowledgeBaseEntity kb = knowledgeBaseRepository.findById(kbId)
         .orElseThrow(() -> new BusinessException(ErrorCode.KNOWLEDGE_BASE_NOT_FOUND));
 
@@ -134,12 +139,11 @@ public class KnowledgeBaseQuestionGenerationService {
     }
 
     // 5. 在一个小事务中校验当前任务、替换题目并更新完成状态
-    boolean completed = stateService.replaceQuestionsAndComplete(
-        kbId, taskId, batch.questions(), batch.skippedCount());
-    if (!completed) {
-      log.info("题目生成任务已被替换，丢弃旧结果: kbId={}, taskId={}", kbId, taskId);
-      return;
-    }
+    complete.accept(() -> {
+      if (!stateService.replaceQuestionsAndComplete(kbId, taskId, batch.questions(), batch.skippedCount())) {
+        throw new IllegalStateException("Question generation task is no longer current");
+      }
+    });
 
     log.info("知识库问题异步生成完成: kbId={}, taskId={}, count={}",
         kbId, taskId, batch.questions().size());

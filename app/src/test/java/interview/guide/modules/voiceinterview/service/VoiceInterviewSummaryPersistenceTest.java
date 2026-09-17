@@ -2,7 +2,7 @@ package interview.guide.modules.voiceinterview.service;
 
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
-import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
+import interview.guide.modules.voiceinterview.listener.VoiceEvaluateTaskSubmission;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewMessageEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewEvaluationRepository;
@@ -39,7 +39,7 @@ class VoiceInterviewSummaryPersistenceTest {
   @Mock
   private VoiceInterviewProperties properties;
   @Mock
-  private VoiceEvaluateStreamProducer evaluateStreamProducer;
+  private VoiceEvaluateTaskSubmission evaluateTaskSubmission;
   @Mock
   private LlmProviderRegistry llmProviderRegistry;
 
@@ -53,7 +53,7 @@ class VoiceInterviewSummaryPersistenceTest {
         evaluationRepository,
         redissonClient,
         properties,
-        evaluateStreamProducer,
+        evaluateTaskSubmission,
         llmProviderRegistry
     );
   }

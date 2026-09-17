@@ -26,6 +26,27 @@ springdoc:
   packages-to-scan: interview.guide.modules
 
 spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 10000
+        delivery.timeout.ms: 30000
+        request.timeout.ms: 10000
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 1
+      properties:
+        max.poll.interval.ms: 1800000
+    listener:
+      ack-mode: record
   config:
     import: optional:classpath:voice-interview-opening.yml
   application:
@@ -95,6 +116,17 @@ spring:
 
 # Application custom configuration
 app:
+  tasks:
+    consumer-enabled: ${TASK_CONSUMER_ENABLED:true}
+    dispatcher-enabled: ${TASK_DISPATCHER_ENABLED:true}
+    recovery-enabled: ${TASK_RECOVERY_ENABLED:true}
+    replicas: ${KAFKA_TASK_REPLICAS:1}
+    partitions: ${KAFKA_TASK_PARTITIONS:3}
+    execution-timeout: 20m
+    lease-duration: 2m
+    heartbeat-interval: 20s
+    send-timeout: 10s
+    max-attempts: 4
   learning:
     task-completion-delta: ${APP_LEARNING_TASK_COMPLETION_DELTA:5}
   ai:

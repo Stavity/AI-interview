@@ -4,8 +4,7 @@ import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSanitizer;
 import interview.guide.common.ai.StructuredOutputInvoker;
 import interview.guide.common.exception.BusinessException;
-import interview.guide.modules.knowledgebase.listener.QuestionGenStreamConsumer;
-import interview.guide.modules.knowledgebase.listener.QuestionGenStreamProducer;
+import interview.guide.modules.knowledgebase.listener.QuestionGenTaskSubmission;
 import interview.guide.modules.knowledgebase.model.GenerateKnowledgeBaseQuestionsRequest;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
@@ -31,7 +30,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
-import org.redisson.api.stream.StreamMessageId;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.core.type.TypeReference;
 
@@ -76,7 +74,7 @@ class QuestionGenerationAsyncTest {
   @Mock
   private PromptSanitizer promptSanitizer;
   @Mock
-  private QuestionGenStreamProducer questionGenStreamProducer;
+  private QuestionGenTaskSubmission questionGenTaskSubmission;
   @Mock
   private RedisService redisService;
   @Mock
@@ -99,7 +97,7 @@ class QuestionGenerationAsyncTest {
         knowledgeBaseRepository,
         questionRepository,
         objectMapper,
-        questionGenStreamProducer,
+        questionGenTaskSubmission,
         stateService
     );
 
@@ -150,12 +148,12 @@ class QuestionGenerationAsyncTest {
   class SubmitTask {
 
     @Test
-    @DisplayName("首次提交后状态变为 QUEUED，并成功投递 Redis Stream 消息")
+    @DisplayName("首次提交后状态变为 QUEUED，并创建可靠任务通知")
     void shouldSetQueuedAndSendToStream() {
       KnowledgeBaseEntity kb = buildKb(1L, QuestionGenStatus.NONE, null);
       when(knowledgeBaseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(kb));
       when(knowledgeBaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-      when(questionGenStreamProducer.sendGenerateTask(eq(1L), anyString())).thenReturn(true);
+      when(questionGenTaskSubmission.sendGenerateTask(eq(1L), anyString())).thenReturn(true);
 
       QuestionGenStatusResponse response = questionService.submitGenerationTask(
           1L, new GenerateKnowledgeBaseQuestionsRequest("mid", 5, 2, 3, null));
@@ -164,7 +162,7 @@ class QuestionGenerationAsyncTest {
       assertThat(response.questionGenTaskId()).isNotNull();
       assertThat(kb.getQuestionGenStatus()).isEqualTo(QuestionGenStatus.QUEUED);
       assertThat(kb.getQuestionGenTaskId()).isEqualTo(response.questionGenTaskId());
-      verify(questionGenStreamProducer).sendGenerateTask(eq(1L), anyString());
+      verify(questionGenTaskSubmission).sendGenerateTask(eq(1L), anyString());
     }
 
     @Test
@@ -178,7 +176,7 @@ class QuestionGenerationAsyncTest {
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("正在生成中");
 
-      verify(questionGenStreamProducer, never()).sendGenerateTask(any(), anyString());
+      verify(questionGenTaskSubmission, never()).sendGenerateTask(any(), anyString());
     }
 
     @Test
@@ -192,7 +190,7 @@ class QuestionGenerationAsyncTest {
           .isInstanceOf(BusinessException.class)
           .hasMessageContaining("正在生成中");
 
-      verify(questionGenStreamProducer, never()).sendGenerateTask(any(), anyString());
+      verify(questionGenTaskSubmission, never()).sendGenerateTask(any(), anyString());
     }
 
     @Test
@@ -202,7 +200,7 @@ class QuestionGenerationAsyncTest {
       kb.setQuestionGenError("之前的错误");
       when(knowledgeBaseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(kb));
       when(knowledgeBaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-      when(questionGenStreamProducer.sendGenerateTask(eq(1L), anyString())).thenReturn(true);
+      when(questionGenTaskSubmission.sendGenerateTask(eq(1L), anyString())).thenReturn(true);
 
       QuestionGenStatusResponse response = questionService.submitGenerationTask(
           1L, new GenerateKnowledgeBaseQuestionsRequest("mid", 5, 2, 3, null));
@@ -225,12 +223,7 @@ class QuestionGenerationAsyncTest {
       when(knowledgeBaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
       // 模拟 Consumer 的 shouldSkip 检查
-      QuestionGenStreamConsumer consumer = new QuestionGenStreamConsumer(
-          redisService, generationService, stateService, questionGenStreamProducer);
-
-      boolean claimed = invokeTryMarkProcessing(consumer,
-          new QuestionGenStreamConsumer.QuestionGenPayload(
-              1L, "task-1"));
+      boolean claimed = stateService.tryMarkProcessing(1L, "task-1");
       assertThat(claimed).isTrue();
       assertThat(kb.getQuestionGenStatus()).isEqualTo(QuestionGenStatus.PROCESSING);
     }
@@ -240,12 +233,7 @@ class QuestionGenerationAsyncTest {
     void shouldSkipWhenKbDeleted() {
       when(knowledgeBaseRepository.findByIdForUpdate(99L)).thenReturn(Optional.empty());
 
-      QuestionGenStreamConsumer consumer = new QuestionGenStreamConsumer(
-          redisService, generationService, stateService, questionGenStreamProducer);
-
-      boolean claimed = invokeTryMarkProcessing(consumer,
-          new QuestionGenStreamConsumer.QuestionGenPayload(
-              99L, "task-1"));
+      boolean claimed = stateService.tryMarkProcessing(99L, "task-1");
       assertThat(claimed).isFalse();
     }
 
@@ -255,12 +243,7 @@ class QuestionGenerationAsyncTest {
       KnowledgeBaseEntity kb = buildKb(1L, QuestionGenStatus.QUEUED, "newer-task");
       when(knowledgeBaseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(kb));
 
-      QuestionGenStreamConsumer consumer = new QuestionGenStreamConsumer(
-          redisService, generationService, stateService, questionGenStreamProducer);
-
-      boolean claimed = invokeTryMarkProcessing(consumer,
-          new QuestionGenStreamConsumer.QuestionGenPayload(
-              1L, "old-task"));
+      boolean claimed = stateService.tryMarkProcessing(1L, "old-task");
       assertThat(claimed).isFalse();
     }
 
@@ -270,47 +253,17 @@ class QuestionGenerationAsyncTest {
       KnowledgeBaseEntity kb = buildKb(1L, QuestionGenStatus.COMPLETED, "task-1");
       when(knowledgeBaseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(kb));
 
-      QuestionGenStreamConsumer consumer = new QuestionGenStreamConsumer(
-          redisService, generationService, stateService, questionGenStreamProducer);
-
-      boolean claimed = invokeTryMarkProcessing(consumer,
-          new QuestionGenStreamConsumer.QuestionGenPayload(
-              1L, "task-1"));
+      boolean claimed = stateService.tryMarkProcessing(1L, "task-1");
       assertThat(claimed).isFalse();
     }
 
     @Test
-    @DisplayName("执行失败重新入队前应将状态恢复为 QUEUED")
-    void shouldResetToQueuedBeforeRetry() throws Exception {
-      KnowledgeBaseEntity kb = buildKb(1L, QuestionGenStatus.QUEUED, "task-1");
-      when(knowledgeBaseRepository.findById(1L)).thenReturn(Optional.of(kb));
+    @DisplayName("执行失败可将状态恢复为 QUEUED")
+    void shouldResetToQueuedBeforeRetry() {
+      KnowledgeBaseEntity kb = buildKb(1L, QuestionGenStatus.PROCESSING, "task-1");
       when(knowledgeBaseRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(kb));
-      kb.setQuestionGenConfig(objectMapper.writeValueAsString(
-          new QuestionGenerationConfig("mid", 5, 2, 3, null)));
-      when(questionGenStreamProducer.sendGenerateTask(1L, "task-1", 1)).thenReturn(true);
-
-      KnowledgeBaseQuestionGenerationService failingService =
-          mock(KnowledgeBaseQuestionGenerationService.class);
-      doThrow(new BusinessException(
-          interview.guide.common.exception.ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
-          "模拟失败"))
-          .when(failingService)
-          .executeGeneration(eq(1L), eq("task-1"), any(QuestionGenerationConfig.class));
-
-      QuestionGenStreamConsumer consumer = new QuestionGenStreamConsumer(
-          redisService, failingService, stateService, questionGenStreamProducer);
-      invokeProcessMessage(consumer, Map.of(
-          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_KB_ID, "1",
-          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_TASK_ID, "task-1",
-          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_DIFFICULTY, "mid",
-          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_QUESTION_COUNT, "5",
-          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_FOLLOW_UP_COUNT, "2",
-          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_CATEGORY_LIMIT, "3",
-          interview.guide.common.constant.AsyncTaskStreamConstants.FIELD_RETRY_COUNT, "0"
-      ));
-
+      assertThat(stateService.resetForRetry(1L, "task-1")).isTrue();
       assertThat(kb.getQuestionGenStatus()).isEqualTo(QuestionGenStatus.QUEUED);
-      verify(questionGenStreamProducer).sendGenerateTask(1L, "task-1", 1);
     }
   }
 
@@ -456,8 +409,9 @@ class QuestionGenerationAsyncTest {
             ));
           });
 
-      generationService.executeGeneration(
-          1L, "task-1", new QuestionGenerationConfig("mid", 5, 2, 3, null));
+      assertThatThrownBy(() -> generationService.executeGeneration(
+          1L, "task-1", new QuestionGenerationConfig("mid", 5, 2, 3, null)))
+          .isInstanceOf(IllegalStateException.class);
 
       verify(questionRepository, never()).deleteByKnowledgeBaseId(any());
       verify(questionRepository, never()).saveAll(anyList());
@@ -531,35 +485,11 @@ class QuestionGenerationAsyncTest {
 
   // ========== 辅助方法 ==========
 
-  private boolean invokeTryMarkProcessing(
-      QuestionGenStreamConsumer consumer,
-      QuestionGenStreamConsumer.QuestionGenPayload payload
-  ) {
-    try {
-      var consumerMethod = QuestionGenStreamConsumer.class.getDeclaredMethod("tryMarkProcessing",
-          QuestionGenStreamConsumer.QuestionGenPayload.class);
-      consumerMethod.setAccessible(true);
-      return (boolean) consumerMethod.invoke(consumer, payload);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   private void stubInvokerForGeneration(KnowledgeBaseQuestionGenerationService.QuestionListDTO toReturn) {
     when(structuredOutputInvoker.invoke(
         eq(chatClient), anyString(), anyString(), any(),
         any(), anyString(), anyString(), any()))
         .thenReturn(toReturn);
-  }
-
-  private void invokeProcessMessage(
-      QuestionGenStreamConsumer consumer,
-      Map<String, String> data
-  ) throws Exception {
-    Method method = interview.guide.common.async.AbstractStreamConsumer.class
-        .getDeclaredMethod("processMessage", StreamMessageId.class, Map.class);
-    method.setAccessible(true);
-    method.invoke(consumer, new StreamMessageId(1, 0), new HashMap<>(data));
   }
 
   private KnowledgeBaseQuestionRepository.CategoryCount categoryCount(

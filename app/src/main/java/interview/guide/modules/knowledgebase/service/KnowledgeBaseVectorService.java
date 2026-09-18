@@ -6,8 +6,6 @@ import interview.guide.common.transaction.TransactionalExecutor;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.transformer.splitter.TextSplitter;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +23,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class KnowledgeBaseVectorService {
-    
+
     /**
      * 阿里云 DashScope Embedding API 批量大小限制
      */
@@ -35,25 +33,26 @@ public class KnowledgeBaseVectorService {
     private static final String METADATA_TARGET_KB_ID = "kb_target_id";
     private static final String METADATA_VECTOR_JOB_ID = "kb_vector_job_id";
     private final VectorStore vectorStore;
-    private final TextSplitter textSplitter;
+    private final KnowledgeBaseChunkService chunkService;
     private final VectorRepository vectorRepository;
     private final TransactionalExecutor transactionalExecutor;
 
     @Autowired
     public KnowledgeBaseVectorService(
         VectorStore vectorStore,
+        KnowledgeBaseChunkService chunkService,
         VectorRepository vectorRepository,
         TransactionalExecutor transactionalExecutor
     ) {
         this.vectorStore = vectorStore;
+        this.chunkService = chunkService;
         this.vectorRepository = vectorRepository;
         this.transactionalExecutor = transactionalExecutor;
-        // 使用 TokenTextSplitter 默认配置，每个 chunk 约 800 tokens，基于标点边界切分（无重叠）
-        this.textSplitter = TokenTextSplitter.builder().build();
     }
 
-    KnowledgeBaseVectorService(VectorStore vectorStore, VectorRepository vectorRepository) {
-        this(vectorStore, vectorRepository, null);
+    KnowledgeBaseVectorService(VectorStore vectorStore, KnowledgeBaseChunkService chunkService,
+                               VectorRepository vectorRepository) {
+        this(vectorStore, chunkService, vectorRepository, null);
     }
 
     /**
@@ -76,13 +75,11 @@ public class KnowledgeBaseVectorService {
             log.info("开始向量化知识库: kbId={}, jobId={}, contentLength={}",
                 knowledgeBaseId, jobId, content.length());
 
-            // 1. 将文本分块
-            List<Document> chunks = textSplitter.apply(
-                List.of(new Document(content))
-            );
-            
+            // 1. 将文本分块（结构化切分 + overlap + 中文标点 + 语义 metadata）
+            List<Document> chunks = chunkService.chunk(content);
+
             log.info("文本分块完成: {} 个chunks", chunks.size());
-            
+
             // 2. 为每个 chunk 添加临时 metadata，成功后再提升为正式 kb_id。
             applyPendingMetadata(chunks, knowledgeBaseId, jobId);
 
@@ -99,7 +96,12 @@ public class KnowledgeBaseVectorService {
                 vectorStore.add(batch);
             }
             String completedJobId = jobId;
-            complete.accept(() -> activateVectorJob(knowledgeBaseId, completedJobId));
+            int finalTotalChunks = totalChunks;
+            complete.accept(() -> {
+                activateVectorJob(knowledgeBaseId, completedJobId);
+                // 回填知识库 chunk 数（补缺口：原实现从未设置 chunk_count）
+                vectorRepository.updateChunkCount(knowledgeBaseId, finalTotalChunks);
+            });
             log.info("知识库向量化完成: kbId={}, jobId={}, chunks={}, batches={}",
                     knowledgeBaseId, jobId, totalChunks, batchCount);
         } catch (Exception e) {

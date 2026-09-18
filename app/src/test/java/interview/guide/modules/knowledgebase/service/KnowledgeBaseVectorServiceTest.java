@@ -34,9 +34,8 @@ import static org.mockito.Mockito.*;
  *   <li>删除向量数据（deleteByKnowledgeBaseId）</li>
  * </ul>
  *
- * <p>注意：TextSplitter 未被 Mock，测试依赖 TokenTextSplitter 的真实行为。
- * 这是有意为之，因为分词逻辑是向量化的核心部分，应该进行集成测试。
- * 如需完全隔离，可将 TextSplitter 改为构造函数注入。
+ * <p>注意：分块器使用真实的 {@link KnowledgeBaseChunkService}（基于默认 {@link KnowledgeBaseChunkProperties}），
+ * 因为分块逻辑是向量化的核心部分，应进行集成测试。如需完全隔离，可在构造函数注入 mock 的 chunkService。
  */
 @DisplayName("知识库向量服务测试")
 @SuppressWarnings("unchecked") // Mockito ArgumentCaptor 泛型警告
@@ -53,14 +52,15 @@ class KnowledgeBaseVectorServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        vectorService = new KnowledgeBaseVectorService(vectorStore, vectorRepository);
+        vectorService = new KnowledgeBaseVectorService(
+            vectorStore, new KnowledgeBaseChunkService(new KnowledgeBaseChunkProperties()), vectorRepository);
     }
 
     // ==================== 共享辅助方法 ====================
 
     /**
-     * 生成足够长的内容，确保 TokenTextSplitter 产生 chunks
-     * TokenTextSplitter 默认配置下，需要较长的文本才会分块
+     * 生成足够长的内容，确保 KnowledgeBaseChunkService 产生 chunks
+     * 默认 targetChunkChars=1000，需要较长的文本才会分多块
      */
     private String generateLongContent(int paragraphs) {
         StringBuilder contentBuilder = new StringBuilder();

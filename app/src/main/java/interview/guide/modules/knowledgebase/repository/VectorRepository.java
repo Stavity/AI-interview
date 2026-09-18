@@ -106,4 +106,18 @@ public class VectorRepository {
                 ErrorCode.KNOWLEDGE_BASE_VECTORIZATION_FAILED, "提升临时向量数据失败");
         }
     }
+
+    /**
+     * 回填知识库的 chunk 数量（向量化完成后调用）。
+     */
+    public void updateChunkCount(Long knowledgeBaseId, int chunkCount) {
+        try {
+            jdbcTemplate.update(
+                "UPDATE knowledge_bases SET chunk_count = ? WHERE id = ?",
+                chunkCount, knowledgeBaseId);
+        } catch (Exception e) {
+            log.warn("回填 chunk_count 失败（不影响向量化结果）: kbId={}, error={}",
+                knowledgeBaseId, e.getMessage());
+        }
+    }
 }

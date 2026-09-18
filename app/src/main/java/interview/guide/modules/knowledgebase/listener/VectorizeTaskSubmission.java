@@ -10,9 +10,11 @@ public class VectorizeTaskSubmission {
     private final AsyncTaskSubmissionService tasks;
     private final KnowledgeBaseRepository repository;
     @Transactional
-    public void sendVectorizeTask(Long id, String content) {
+    public void sendVectorizeTask(Long id) {
         var row = repository.findById(id).orElseThrow();
-        tasks.submit(AsyncTaskType.KB_VECTORIZE, id.toString(), Map.of("content", content));
+        // 解析文本已持久化到 knowledge_bases.parsed_content，任务只投递 businessId，
+        // 由 handler 从 KB 行读取，避免把整段内容塞进 async_task.input_payload JSONB
+        tasks.submit(AsyncTaskType.KB_VECTORIZE, id.toString(), Map.of());
         row.setVectorStatus(interview.guide.modules.knowledgebase.model.VectorStatus.PENDING); row.setVectorError(null); repository.save(row);
     }
 }

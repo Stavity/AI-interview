@@ -73,6 +73,10 @@ public class KnowledgeBaseEntity {
     // 向量分块数量
     private Integer chunkCount = 0;
 
+    // 解析后的纯文本内容（持久化以支持低成本重新切分/重新向量化，无需再从 RustFS 下载并解析）
+    @Column(columnDefinition = "TEXT")
+    private String parsedContent;
+
     // 问题生成状态
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
@@ -244,6 +248,14 @@ public class KnowledgeBaseEntity {
 
     public void setChunkCount(Integer chunkCount) {
         this.chunkCount = chunkCount;
+    }
+
+    public String getParsedContent() {
+        return parsedContent;
+    }
+
+    public void setParsedContent(String parsedContent) {
+        this.parsedContent = parsedContent;
     }
 
     public QuestionGenStatus getQuestionGenStatus() {

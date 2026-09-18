@@ -12,7 +12,15 @@ public class KnowledgeBaseVectorizeTaskHandler implements AsyncTaskHandler {
     public AsyncTaskType type() { return AsyncTaskType.KB_VECTORIZE; }
     public boolean exists(String id) { return repository.existsById(Long.valueOf(id)); }
     public void execute(TaskExecutionContext context) {
-        vectors.vectorizeAndStore(Long.valueOf(context.businessId()), context.required("content"),
+        Long kbId = Long.valueOf(context.businessId());
+        // 从 knowledge_bases.parsed_content 读取解析文本，不再从任务载荷取
+        String content = repository.findById(kbId)
+            .map(interview.guide.modules.knowledgebase.model.KnowledgeBaseEntity::getParsedContent)
+            .orElseThrow(() -> new IllegalArgumentException("知识库不存在: " + context.businessId()));
+        if (content == null || content.isBlank()) {
+            throw new IllegalStateException("parsed_content 为空，无法向量化: kbId=" + context.businessId());
+        }
+        vectors.vectorizeAndStore(kbId, content,
             context.taskId() + ":" + context.executionVersion(), context::complete);
     }
     public void updateStatus(String id, AsyncTaskState state, String error) {

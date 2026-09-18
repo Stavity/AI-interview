@@ -76,10 +76,10 @@ public class KnowledgeBaseUploadService {
         String fileUrl = storageService.getFileUrl(fileKey);
         log.info("知识库已存储到RustFS: {}", fileKey);
 
-        // 6. 保存知识库元数据到数据库（状态为 PENDING）
+        // 6. 保存知识库元数据到数据库（状态为 PENDING）；解析文本随行持久化
         KnowledgeBaseEntity savedKb = transactionalExecutor.call(() -> {
-            var saved = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash);
-            vectorizeTaskSubmission.sendVectorizeTask(saved.getId(), content);
+            var saved = persistenceService.saveKnowledgeBase(file, name, category, fileKey, fileUrl, fileHash, content);
+            vectorizeTaskSubmission.sendVectorizeTask(saved.getId());
             return saved;
         });
 
@@ -128,14 +128,27 @@ public class KnowledgeBaseUploadService {
 
         log.info("开始重新向量化知识库: kbId={}, name={}", kbId, kb.getName());
 
-        // 1. 下载文件并解析内容
-        String content = parseService.downloadAndParseContent(kb.getStorageKey(), kb.getOriginalFilename());
-        if (content == null || content.trim().isEmpty()) {
+        // 1. 优先读取已持久化的解析文本；老行（迁移前）无 parsed_content 时回退到下载解析并回写
+        String content = kb.getParsedContent();
+        if (content == null || content.isBlank()) {
+            content = parseService.downloadAndParseContent(kb.getStorageKey(), kb.getOriginalFilename());
+            if (content == null || content.trim().isEmpty()) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法从文件中提取文本内容");
+            }
+            final String parsed = content;
+            transactionalExecutor.run(() -> {
+                kb.setParsedContent(parsed);
+                knowledgeBaseRepository.save(kb);
+            });
+            log.info("老知识库行回填 parsed_content: kbId={}", kbId);
+        }
+
+        if (content.trim().isEmpty()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "无法从文件中提取文本内容");
         }
 
         // 2. 更新状态为 PENDING（通过单独的 Service 保证事务生效）
-        vectorizeTaskSubmission.sendVectorizeTask(kbId, content);
+        vectorizeTaskSubmission.sendVectorizeTask(kbId);
 
         log.info("重新向量化任务已发送: kbId={}", kbId);
     }

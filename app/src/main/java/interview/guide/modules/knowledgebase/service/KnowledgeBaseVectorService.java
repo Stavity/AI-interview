@@ -272,4 +272,11 @@ public class KnowledgeBaseVectorService {
         }
         transactionalExecutor.run(action);
     }
+
+    /**
+     * 上下文扩展（small-to-big）的委托方法，见 {@link VectorRepository#findNeighborChunks}。
+     */
+    public List<Document> findNeighborChunks(java.util.List<String> hitChunkIds, int window) {
+        return vectorRepository.findNeighborChunks(hitChunkIds, window);
+    }
 }

@@ -101,6 +101,13 @@ public class LlmProviderController {
     return Result.success();
   }
 
+  @PutMapping("/default-rerank-provider")
+  @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
+  public Result<Void> updateDefaultRerankProvider(@RequestBody DefaultProviderDTO request) {
+    configService.updateDefaultRerankProvider(request);
+    return Result.success();
+  }
+
   // ===== Voice ASR/TTS Config =====
 
   @GetMapping("/voice/asr")

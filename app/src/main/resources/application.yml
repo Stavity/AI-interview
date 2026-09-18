@@ -132,6 +132,7 @@ app:
   ai:
     default-provider: dashscope
     default-embedding-provider: dashscope
+    default-rerank-provider: dashscope
     embedding-dimensions: ${APP_AI_EMBEDDING_DIMENSIONS:1024}
     security:
       api-key-encryption-key: ${APP_AI_CONFIG_ENCRYPTION_KEY:}
@@ -151,6 +152,8 @@ app:
         embedding-model: text-embedding-v3
         embedding-dimensions: 1024
         supports-embedding: true
+        supports-rerank: true
+        rerank-model: ${APP_AI_RAG_RERANK_MODEL:gte-rerank-v2}
       lmstudio:
         base-url: http://localhost:1234
         api-key: ${PROVIDER_LMSTUDIO_API_KEY:lm-studio}
@@ -215,6 +218,27 @@ app:
           overlap-chars: ${APP_AI_RAG_CHUNK_OVERLAP_CHARS:200}
           min-chunk-chars: ${APP_AI_RAG_CHUNK_MIN_CHARS:20}
           include-heading-in-chunk: ${APP_AI_RAG_CHUNK_INCLUDE_HEADING:true}
+      # 检索层 rerank（两阶段检索：dense over-fetch → rerank 精排）
+      rerank:
+        enabled: ${APP_AI_RAG_RERANK_ENABLED:false}
+        candidate-top-k: ${APP_AI_RAG_RERANK_CANDIDATE_TOP_K:30}
+        top-n: ${APP_AI_RAG_RERANK_TOP_N:6}
+        min-score: ${APP_AI_RAG_RERANK_MIN_SCORE:0.1}
+        model: ${APP_AI_RAG_RERANK_MODEL:gte-rerank-v2}
+      # 检索层 hybrid（dense + BM25 关键词通道并行 → RRF 融合；BM25 依赖 paradedb）
+      hybrid:
+        enabled: ${APP_AI_RAG_HYBRID_ENABLED:false}
+        keyword-top-k: ${APP_AI_RAG_HYBRID_KEYWORD_TOP_K:20}
+        rrf-k: ${APP_AI_RAG_HYBRID_RRF_K:60}
+      # 检索层上下文扩展（small-to-big：命中 chunk ± window 邻块，按 section 装配）
+      context:
+        expand-window: ${APP_AI_RAG_CONTEXT_EXPAND_WINDOW:1}
+        max-context-chars: ${APP_AI_RAG_CONTEXT_MAX_CHARS:8000}
+        include-source-heading: ${APP_AI_RAG_CONTEXT_INCLUDE_SOURCE_HEADING:true}
+      # 多 query 改写（LLM 产 N 个检索变体；额外一次 LLM 往返，默认关）
+      multi-query:
+        enabled: ${APP_AI_RAG_MULTI_QUERY_ENABLED:false}
+        variant-count: ${APP_AI_RAG_MULTI_QUERY_VARIANT_COUNT:3}
 
   interview:
     follow-up-count: ${APP_INTERVIEW_FOLLOW_UP_COUNT:1}

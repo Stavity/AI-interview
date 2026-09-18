@@ -31,6 +31,9 @@ public class LlmGlobalSettingEntity {
   @Column(name = "default_embedding_provider_id", nullable = false, length = 64)
   private String defaultEmbeddingProviderId;
 
+  @Column(name = "default_rerank_provider_id", length = 64)
+  private String defaultRerankProviderId;
+
   @Column(name = "created_at", nullable = false)
   private LocalDateTime createdAt;
 

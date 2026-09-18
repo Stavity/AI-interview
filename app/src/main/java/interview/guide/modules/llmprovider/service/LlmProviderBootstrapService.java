@@ -48,6 +48,8 @@ public class LlmProviderBootstrapService {
           encryptionService.encrypt(config.getApiKey() != null ? config.getApiKey() : "");
       boolean supportsEmbedding = Boolean.TRUE.equals(config.getSupportsEmbedding())
           || !isBlank(config.getEmbeddingModel());
+      boolean supportsRerank = Boolean.TRUE.equals(config.getSupportsRerank())
+          || !isBlank(config.getRerankModel());
 
       LlmProviderEntity entity = LlmProviderEntity.builder()
           .id(id)
@@ -58,6 +60,8 @@ public class LlmProviderBootstrapService {
           .embeddingModel(trimOrNull(config.getEmbeddingModel()))
           .embeddingDimensions(resolveEmbeddingDimensions(config.getEmbeddingDimensions()))
           .supportsEmbedding(supportsEmbedding)
+          .supportsRerank(supportsRerank)
+          .rerankModel(trimOrNull(config.getRerankModel()))
           .temperature(config.getTemperature())
           .enabled(true)
           .builtin(true)
@@ -80,13 +84,19 @@ public class LlmProviderBootstrapService {
         : defaultChatProvider;
     String defaultEmbeddingProvider = resolveExistingEmbeddingProvider(configuredEmbeddingProvider, defaultChatProvider);
 
+    String configuredRerankProvider = !isBlank(properties.getDefaultRerankProvider())
+        ? properties.getDefaultRerankProvider()
+        : defaultChatProvider;
+    String defaultRerankProvider = resolveExistingRerankProvider(configuredRerankProvider, defaultChatProvider);
+
     globalSettingRepository.save(LlmGlobalSettingEntity.builder()
         .id(LlmGlobalSettingEntity.SINGLETON_ID)
         .defaultChatProviderId(defaultChatProvider)
         .defaultEmbeddingProviderId(defaultEmbeddingProvider)
+        .defaultRerankProviderId(defaultRerankProvider)
         .build());
-    log.info("Initialized LLM global setting: chatProvider={}, embeddingProvider={}",
-        defaultChatProvider, defaultEmbeddingProvider);
+    log.info("Initialized LLM global setting: chatProvider={}, embeddingProvider={}, rerankProvider={}",
+        defaultChatProvider, defaultEmbeddingProvider, defaultRerankProvider);
   }
 
   private String resolveExistingProvider(String preferredProvider, String fallbackProvider) {
@@ -111,6 +121,23 @@ public class LlmProviderBootstrapService {
     return provider.isEnabled()
         && provider.isSupportsEmbedding()
         && !isBlank(provider.getEmbeddingModel());
+  }
+
+  private String resolveExistingRerankProvider(String preferredProvider, String fallbackProvider) {
+    return providerRepository.findById(preferredProvider)
+        .filter(this::canProvideRerank)
+        .map(LlmProviderEntity::getId)
+        .orElseGet(() -> providerRepository.findAll().stream()
+            .filter(this::canProvideRerank)
+            .findFirst()
+            .map(LlmProviderEntity::getId)
+            .orElse(fallbackProvider));
+  }
+
+  private boolean canProvideRerank(LlmProviderEntity provider) {
+    return provider.isEnabled()
+        && provider.isSupportsRerank()
+        && !isBlank(provider.getRerankModel());
   }
 
   private Integer resolveEmbeddingDimensions(Integer configuredDimensions) {

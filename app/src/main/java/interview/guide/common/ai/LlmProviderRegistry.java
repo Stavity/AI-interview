@@ -50,6 +50,7 @@ public class LlmProviderRegistry {
     private final Map<String, ChatClient> clientCache = new ConcurrentHashMap<>();
     private final Map<String, OpenAiChatModel> chatModelCache = new ConcurrentHashMap<>();
     private final Map<String, EmbeddingModel> embeddingModelCache = new ConcurrentHashMap<>();
+    private final Map<String, RerankService> rerankServiceCache = new ConcurrentHashMap<>();
     private final LlmProviderRepository providerRepository;
     private final LlmGlobalSettingRepository globalSettingRepository;
     private final ApiKeyEncryptionService encryptionService;
@@ -153,10 +154,11 @@ public class LlmProviderRegistry {
      * 清空缓存，重新加载所有 provider。
      */
     public void reload() {
-        int size = clientCache.size() + chatModelCache.size() + embeddingModelCache.size();
+        int size = clientCache.size() + chatModelCache.size() + embeddingModelCache.size() + rerankServiceCache.size();
         clientCache.clear();
         chatModelCache.clear();
         embeddingModelCache.clear();
+        rerankServiceCache.clear();
         log.info("[LlmProviderRegistry] Cache cleared ({} entries). Next access will re-create clients.", size);
     }
 
@@ -169,6 +171,50 @@ public class LlmProviderRegistry {
 
     public EmbeddingModel getDefaultEmbeddingModel() {
         return getEmbeddingModel(resolveDefaultEmbeddingProviderId());
+    }
+
+    /**
+     * 获取默认 rerank 服务的 Provider ID（来自 llm_global_setting.default_rerank_provider_id，
+     * 回退 properties.defaultRerankProvider → defaultProvider）。
+     */
+    public String resolveDefaultRerankProviderId() {
+        if (globalSettingRepository == null) {
+            return !isBlank(properties.getDefaultRerankProvider())
+                ? properties.getDefaultRerankProvider()
+                : properties.getDefaultProvider();
+        }
+        return globalSettingRepository.findById(LlmGlobalSettingEntity.SINGLETON_ID)
+            .map(LlmGlobalSettingEntity::getDefaultRerankProviderId)
+            .filter(id -> !isBlank(id))
+            .orElseGet(() -> !isBlank(properties.getDefaultRerankProvider())
+                ? properties.getDefaultRerankProvider()
+                : properties.getDefaultProvider());
+    }
+
+    /**
+     * 获取默认 rerank 服务。无可用 rerank provider 时返回 {@code null}，调用方据此降级。
+     */
+    public RerankService getRerankService() {
+        String providerId = resolveDefaultRerankProviderId();
+        if (isBlank(providerId)) {
+            return null;
+        }
+        return rerankServiceCache.computeIfAbsent(providerId, id -> {
+            ProviderSnapshot config;
+            try {
+                config = loadProviderOrThrow(id);
+            } catch (Exception e) {
+                log.warn("[LlmProviderRegistry] 加载 rerank provider 失败: {}, 降级", id);
+                return null;
+            }
+            if (!config.supportsRerank() || isBlank(config.rerankModel())) {
+                log.warn("[LlmProviderRegistry] Provider '{}' 不支持 rerank，跳过", id);
+                return null;
+            }
+            log.info("[LlmProviderRegistry] Creating RerankService for provider: {}, model: {}",
+                id, config.rerankModel());
+            return new RerankService(config.apiKey(), config.rerankModel());
+        });
     }
 
     private ChatClient createChatClient(String providerId) {
@@ -374,6 +420,8 @@ public class LlmProviderRegistry {
             entity.getEmbeddingModel(),
             entity.getEmbeddingDimensions(),
             entity.isSupportsEmbedding(),
+            entity.isSupportsRerank(),
+            entity.getRerankModel(),
             entity.getTemperature()
         );
     }
@@ -386,6 +434,8 @@ public class LlmProviderRegistry {
         }
         boolean supportsEmbedding = Boolean.TRUE.equals(config.getSupportsEmbedding())
             || !isBlank(config.getEmbeddingModel());
+        boolean supportsRerank = Boolean.TRUE.equals(config.getSupportsRerank())
+            || !isBlank(config.getRerankModel());
         return new ProviderSnapshot(
             providerId,
             config.getBaseUrl(),
@@ -394,6 +444,8 @@ public class LlmProviderRegistry {
             config.getEmbeddingModel(),
             config.getEmbeddingDimensions(),
             supportsEmbedding,
+            supportsRerank,
+            config.getRerankModel(),
             config.getTemperature()
         );
     }
@@ -427,6 +479,8 @@ public class LlmProviderRegistry {
         String embeddingModel,
         Integer embeddingDimensions,
         boolean supportsEmbedding,
+        boolean supportsRerank,
+        String rerankModel,
         Double temperature
     ) {
     }

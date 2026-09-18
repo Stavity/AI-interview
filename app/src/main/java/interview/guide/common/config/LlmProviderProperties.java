@@ -13,6 +13,7 @@ import java.util.Map;
 public class LlmProviderProperties {
     private String defaultProvider = "dashscope";
     private String defaultEmbeddingProvider;
+    private String defaultRerankProvider;
     private Integer embeddingDimensions = 1024;
     private Map<String, ProviderConfig> providers;
     private AdvisorConfig advisors = new AdvisorConfig();
@@ -28,6 +29,8 @@ public class LlmProviderProperties {
         private String embeddingModel;
         private Integer embeddingDimensions;
         private Boolean supportsEmbedding;
+        private Boolean supportsRerank;
+        private String rerankModel;
         private Double temperature;
     }
 

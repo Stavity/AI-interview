@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 /**
  * 向量存储Repository
  * 负责向量数据的增删改查操作
@@ -118,6 +120,61 @@ public class VectorRepository {
         } catch (Exception e) {
             log.warn("回填 chunk_count 失败（不影响向量化结果）: kbId={}, error={}",
                 knowledgeBaseId, e.getMessage());
+        }
+    }
+
+    /**
+     * 上下文扩展（small-to-big）：根据命中的 chunk id，取同 kb_id、chunk_index ± window 的邻块。
+     * metadata 已是 jsonb（见 V20260920）。返回的 Document 含 content + metadata。
+     *
+     * @param hitChunkIds 命中 chunk 的 id 字符串列表（vector_store.id::text）
+     * @param window      前后扩展的 chunk 数
+     * @return 邻块列表（含命中块本身），按 kb_id、chunk_index 升序
+     */
+    public List<org.springframework.ai.document.Document> findNeighborChunks(
+            java.util.List<String> hitChunkIds, int window) {
+        if (hitChunkIds == null || hitChunkIds.isEmpty() || window < 0) {
+            return List.of();
+        }
+        String[] ids = hitChunkIds.toArray(new String[0]);
+        try {
+            return jdbcTemplate.query(
+                con -> {
+                    var ps = con.prepareStatement(
+                        """
+                        WITH hit AS (
+                          SELECT (metadata->>'kb_id')::bigint AS kb_id,
+                                 (metadata->>'chunk_index')::int AS idx
+                          FROM vector_store WHERE id::text = ANY (?)
+                        )
+                        SELECT v.id::text AS id, v.content, v.metadata
+                        FROM vector_store v
+                        JOIN hit h ON (v.metadata->>'kb_id')::bigint = h.kb_id
+                        WHERE (v.metadata->>'chunk_index')::int BETWEEN h.idx - ? AND h.idx + ?
+                        ORDER BY (v.metadata->>'kb_id')::bigint, (v.metadata->>'chunk_index')::int
+                        """);
+                    ps.setArray(1, con.createArrayOf("text", ids));
+                    ps.setInt(2, window);
+                    ps.setInt(3, window);
+                    return ps;
+                },
+                (rs, i) -> {
+                    String id = rs.getString("id");
+                    String content = rs.getString("content");
+                    Object metaObj = rs.getObject("metadata");
+                    java.util.Map<String, Object> metadata = new java.util.HashMap<>();
+                    if (metaObj != null) {
+                        try {
+                            metadata = new com.fasterxml.jackson.databind.ObjectMapper()
+                                .readValue(metaObj.toString(),
+                                    new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
+                        } catch (Exception ignored) { }
+                    }
+                    return new org.springframework.ai.document.Document(id, content, metadata);
+                });
+        } catch (Exception e) {
+            log.warn("邻居扩展查询失败，回退到仅命中块: {}", e.getMessage());
+            return List.of();
         }
     }
 }

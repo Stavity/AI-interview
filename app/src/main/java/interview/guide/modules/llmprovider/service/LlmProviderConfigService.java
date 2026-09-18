@@ -154,9 +154,13 @@ public class LlmProviderConfigService {
                 .embeddingDimensions(resolveEmbeddingDimensions(e.getValue().getEmbeddingDimensions()))
                 .supportsEmbedding(Boolean.TRUE.equals(e.getValue().getSupportsEmbedding())
                     || trimOrNull(e.getValue().getEmbeddingModel()) != null)
+                .supportsRerank(Boolean.TRUE.equals(e.getValue().getSupportsRerank())
+                    || trimOrNull(e.getValue().getRerankModel()) != null)
+                .rerankModel(trimOrNull(e.getValue().getRerankModel()))
                 .temperature(e.getValue().getTemperature())
                 .defaultChatProvider(e.getKey().equals(properties.getDefaultProvider()))
                 .defaultEmbeddingProvider(e.getKey().equals(properties.getDefaultEmbeddingProvider()))
+                .defaultRerankProvider(e.getKey().equals(properties.getDefaultRerankProvider()))
                 .build())
             .toList();
       }
@@ -170,9 +174,12 @@ public class LlmProviderConfigService {
               .embeddingModel(provider.getEmbeddingModel())
               .embeddingDimensions(resolveEmbeddingDimensions(provider.getEmbeddingDimensions()))
               .supportsEmbedding(provider.isSupportsEmbedding())
+              .supportsRerank(provider.isSupportsRerank())
+              .rerankModel(provider.getRerankModel())
               .temperature(provider.getTemperature())
               .defaultChatProvider(provider.getId().equals(setting.getDefaultChatProviderId()))
               .defaultEmbeddingProvider(provider.getId().equals(setting.getDefaultEmbeddingProviderId()))
+              .defaultRerankProvider(provider.getId().equals(setting.getDefaultRerankProviderId()))
               .build())
           .toList();
     } finally {
@@ -194,9 +201,13 @@ public class LlmProviderConfigService {
             .embeddingDimensions(resolveEmbeddingDimensions(config.getEmbeddingDimensions()))
             .supportsEmbedding(Boolean.TRUE.equals(config.getSupportsEmbedding())
                 || trimOrNull(config.getEmbeddingModel()) != null)
+            .supportsRerank(Boolean.TRUE.equals(config.getSupportsRerank())
+                || trimOrNull(config.getRerankModel()) != null)
+            .rerankModel(trimOrNull(config.getRerankModel()))
             .temperature(config.getTemperature())
             .defaultChatProvider(id.equals(properties.getDefaultProvider()))
             .defaultEmbeddingProvider(id.equals(properties.getDefaultEmbeddingProvider()))
+            .defaultRerankProvider(id.equals(properties.getDefaultRerankProvider()))
             .build();
       }
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
@@ -209,9 +220,12 @@ public class LlmProviderConfigService {
           .embeddingModel(provider.getEmbeddingModel())
           .embeddingDimensions(resolveEmbeddingDimensions(provider.getEmbeddingDimensions()))
           .supportsEmbedding(provider.isSupportsEmbedding())
+          .supportsRerank(provider.isSupportsRerank())
+          .rerankModel(provider.getRerankModel())
           .temperature(provider.getTemperature())
           .defaultChatProvider(id.equals(setting.getDefaultChatProviderId()))
           .defaultEmbeddingProvider(id.equals(setting.getDefaultEmbeddingProviderId()))
+          .defaultRerankProvider(id.equals(setting.getDefaultRerankProviderId()))
           .build();
     } finally {
       rwLock.readLock().unlock();
@@ -222,12 +236,14 @@ public class LlmProviderConfigService {
     rwLock.readLock().lock();
     try {
       if (!isDatabaseBacked()) {
-        return new DefaultProviderDTO(properties.getDefaultProvider(), properties.getDefaultEmbeddingProvider());
+        return new DefaultProviderDTO(properties.getDefaultProvider(),
+            properties.getDefaultEmbeddingProvider(), properties.getDefaultRerankProvider());
       }
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
       return new DefaultProviderDTO(
           setting.getDefaultChatProviderId(),
-          setting.getDefaultEmbeddingProviderId());
+          setting.getDefaultEmbeddingProviderId(),
+          setting.getDefaultRerankProviderId());
     } finally {
       rwLock.readLock().unlock();
     }
@@ -338,6 +354,14 @@ public class LlmProviderConfigService {
       boolean supportsEmbedding = request.supportsEmbedding() != null
           ? request.supportsEmbedding()
           : embeddingModel != null;
+      String rerankModel = trimOrNull(request.rerankModel());
+      boolean supportsRerank = request.supportsRerank() != null
+          ? request.supportsRerank()
+          : rerankModel != null;
+      if (supportsRerank && rerankModel == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST,
+            "支持 Rerank 的 Provider 必须填写 rerankModel");
+      }
       validateEmbeddingConfig(providerId, supportsEmbedding, embeddingModel, embeddingDimensions);
 
       ApiKeyEncryptionService.EncryptedValue encrypted = encryptionService.encrypt(apiKey);
@@ -350,6 +374,8 @@ public class LlmProviderConfigService {
           .embeddingModel(embeddingModel)
           .embeddingDimensions(embeddingDimensions)
           .supportsEmbedding(supportsEmbedding)
+          .supportsRerank(supportsRerank)
+          .rerankModel(rerankModel)
           .temperature(request.temperature())
           .enabled(true)
           .builtin(false)
@@ -395,6 +421,16 @@ public class LlmProviderConfigService {
       if (request.supportsEmbedding() != null) {
         provider.setSupportsEmbedding(request.supportsEmbedding());
       }
+      if (request.rerankModel() != null) {
+        provider.setRerankModel(trimOrNull(request.rerankModel()));
+      }
+      if (request.supportsRerank() != null) {
+        provider.setSupportsRerank(request.supportsRerank());
+      }
+      if (provider.isSupportsRerank() && trimOrNull(provider.getRerankModel()) == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST,
+            "支持 Rerank 的 Provider 必须填写 rerankModel");
+      }
       validateEmbeddingConfig(
           id,
           provider.isSupportsEmbedding(),
@@ -426,7 +462,9 @@ public class LlmProviderConfigService {
         return;
       }
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
-      if (id.equals(setting.getDefaultChatProviderId()) || id.equals(setting.getDefaultEmbeddingProviderId())) {
+      if (id.equals(setting.getDefaultChatProviderId())
+          || id.equals(setting.getDefaultEmbeddingProviderId())
+          || id.equals(setting.getDefaultRerankProviderId())) {
         throw new BusinessException(ErrorCode.PROVIDER_DEFAULT_CANNOT_DELETE,
             "默认 Provider '" + id + "' 不可删除，请先切换默认 Provider");
       }
@@ -487,6 +525,29 @@ public class LlmProviderConfigService {
       globalSettingRepository.save(setting);
       registry.reload();
       log.info("Updated default embedding provider: {}", providerId);
+    } finally {
+      rwLock.writeLock().unlock();
+    }
+  }
+
+  @Transactional
+  public void updateDefaultRerankProvider(DefaultProviderDTO request) {
+    rwLock.writeLock().lock();
+    try {
+      String providerId = trimOrNull(request.defaultRerankProvider());
+      if (providerId == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultRerankProvider 不能为空");
+      }
+      LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
+      if (!provider.isSupportsRerank() || trimOrNull(provider.getRerankModel()) == null) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST,
+            "Provider '" + providerId + "' 不支持 Rerank，不能设为默认精排服务");
+      }
+      LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
+      setting.setDefaultRerankProviderId(providerId);
+      globalSettingRepository.save(setting);
+      registry.reload();
+      log.info("Updated default rerank provider: {}", providerId);
     } finally {
       rwLock.writeLock().unlock();
     }
@@ -596,6 +657,8 @@ public class LlmProviderConfigService {
     config.setEmbeddingModel(request.embeddingModel());
     config.setEmbeddingDimensions(request.embeddingDimensions());
     config.setSupportsEmbedding(request.supportsEmbedding());
+    config.setRerankModel(request.rerankModel());
+    config.setSupportsRerank(request.supportsRerank());
     config.setTemperature(request.temperature());
     providers.put(request.id(), config);
 
@@ -630,6 +693,12 @@ public class LlmProviderConfigService {
     }
     if (request.supportsEmbedding() != null) {
       config.setSupportsEmbedding(request.supportsEmbedding());
+    }
+    if (request.rerankModel() != null) {
+      config.setRerankModel(trimOrNull(request.rerankModel()));
+    }
+    if (request.supportsRerank() != null) {
+      config.setSupportsRerank(request.supportsRerank());
     }
     if (request.temperature() != null) {
       config.setTemperature(request.temperature());
@@ -675,6 +744,8 @@ public class LlmProviderConfigService {
         config.getEmbeddingModel(),
         resolveEmbeddingDimensions(config.getEmbeddingDimensions()),
         Boolean.TRUE.equals(config.getSupportsEmbedding()) || trimOrNull(config.getEmbeddingModel()) != null,
+        trimOrNull(config.getRerankModel()),
+        Boolean.TRUE.equals(config.getSupportsRerank()) || trimOrNull(config.getRerankModel()) != null,
         config.getTemperature()
     );
   }
@@ -700,6 +771,8 @@ public class LlmProviderConfigService {
         provider.getEmbeddingModel(),
         resolveEmbeddingDimensions(provider.getEmbeddingDimensions()),
         provider.isSupportsEmbedding(),
+        provider.getRerankModel(),
+        provider.isSupportsRerank(),
         provider.getTemperature()
     );
   }
@@ -1196,6 +1269,8 @@ public class LlmProviderConfigService {
       String embeddingModel,
       Integer embeddingDimensions,
       boolean supportsEmbedding,
+      String rerankModel,
+      boolean supportsRerank,
       Double temperature
   ) {
   }

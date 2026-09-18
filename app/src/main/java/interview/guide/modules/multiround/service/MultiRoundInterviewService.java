@@ -46,7 +46,18 @@ public class MultiRoundInterviewService {
     var existing = interviewRepository.findByInterviewSessionId(session.getId()); if (existing.isPresent()) return existing.get();
     var interview = new MultiRoundInterviewEntity(); interview.setInterviewSession(session); interview.setProviderId(providerId); interview.setProviderFingerprint(providerFingerprint); interview.setStatus(MultiRoundInterviewEntity.Status.ROUND_READY); interview = interviewRepository.save(interview);
     MultiRoundInterviewEntity saved = interview;
-    List<MultiRoundEntity> rounds = MultiRoundStateMachine.defaultRounds().stream().map(type -> { var round = new MultiRoundEntity(); round.setInterview(saved); round.setRoundNo(MultiRoundStateMachine.defaultRounds().indexOf(type) + 1); round.setRoundType(MultiRoundEntity.Type.valueOf(type)); round.setQuestionLimit(3); return round; }).toList();
+    List<String> roundTypes = MultiRoundStateMachine.defaultRounds();
+    // 原实现直接使用硬编码列表，绕过了 validatePlan，使其成为永不执行的死代码
+    MultiRoundStateMachine.validatePlan(roundTypes);
+    List<MultiRoundEntity> rounds = new java.util.ArrayList<>(roundTypes.size());
+    for (int i = 0; i < roundTypes.size(); i++) {
+      var round = new MultiRoundEntity();
+      round.setInterview(saved);
+      round.setRoundNo(i + 1);
+      round.setRoundType(MultiRoundEntity.Type.valueOf(roundTypes.get(i)));
+      round.setQuestionLimit(3);
+      rounds.add(round);
+    }
     roundRepository.saveAll(rounds); return interview;
   }
   private String fingerprint(LlmProviderEntity provider) { try { byte[] digest = MessageDigest.getInstance("SHA-256").digest((provider.getBaseUrl().trim() + "\n" + provider.getModel().trim() + "\n" + provider.getTemperature()).getBytes(StandardCharsets.UTF_8)); StringBuilder value = new StringBuilder(64); for (byte b : digest) value.append(String.format("%02x", b)); return value.toString(); } catch (Exception error) { throw new IllegalStateException(error); } }

@@ -10,7 +10,7 @@ export interface MultiRoundReport { status: string; completedRounds: number; tot
 export interface MultiRoundQuestion { id: number; sequenceNo: number; questionType: string; categoryKey?: string; question: string; status: string; answer?: string; }
 export interface MultiRoundRound { id: number; roundNo: number; roundType: string; status: string; questionLimit: number; }
 export interface AgentRunTrace { id: number; triggerType: string; status: string; errorCode?: string; startedAt: string; finishedAt?: string; steps: Array<{ stepNo: number; toolName: string; status: string; outputSummary?: string; durationMs?: number; createdAt: string }>; }
-export interface StartMultiRoundInterviewRequest { skillId: string; difficulty: 'junior' | 'mid' | 'senior'; jdText?: string; restart?: boolean; }
+export interface StartMultiRoundInterviewRequest { skillId: string; difficulty: 'junior' | 'mid' | 'senior'; jdText?: string; }
 export interface MultiRoundBootstrapResponse { sessionId: string; interviewId: number; status: string; currentRoundNo: number; resumed: boolean; }
 const withIdempotencyKey = (idempotencyKey: string) => ({ headers: { 'Idempotency-Key': idempotencyKey } });
 

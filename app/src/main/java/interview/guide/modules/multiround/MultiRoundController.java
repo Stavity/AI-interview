@@ -48,10 +48,6 @@ public class MultiRoundController {
   private final AgentRunTraceService traceService;
   private final AlgorithmSubmissionReviewService algorithmReviewService;
 
-  @PostMapping("/interviews/{sessionId}")
-  public Result<InterviewResponse> createInterview(@PathVariable String sessionId, @RequestHeader("Idempotency-Key") String idempotencyKey) {
-    throw new BusinessException(ErrorCode.MULTI_ROUND_RESUME_REQUIRED, "请通过简历详情启动多轮面试");
-  }
   @GetMapping("/interviews/{sessionId}")
   public Result<InterviewDetailResponse> getInterview(@PathVariable String sessionId) {
     MultiRoundInterviewEntity interview = interviewService.getBySessionId(sessionId);
@@ -82,13 +78,13 @@ public class MultiRoundController {
   @PostMapping("/questions/{questionId}/answer")
   public Result<Void> answer(@PathVariable Long questionId, @RequestHeader("Idempotency-Key") String idempotencyKey, @Valid @RequestBody AnswerRequest request) { operationService.answer(questionId, idempotencyKey, request.answer()); return Result.success(); }
 
-  @PostMapping("/rounds/{roundId}/start")
+  @PostMapping("/rounds/{roundId}/start") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<RoundResponse> startRound(@PathVariable Long roundId, @RequestHeader("Idempotency-Key") String idempotencyKey) { return Result.success(RoundResponse.from(operationService.startRound(roundId, idempotencyKey))); }
 
-  @PostMapping("/rounds/{roundId}/finish")
+  @PostMapping("/rounds/{roundId}/finish") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<RoundResponse> finishRound(@PathVariable Long roundId, @RequestHeader("Idempotency-Key") String idempotencyKey) { return Result.success(RoundResponse.from(operationService.finishRound(roundId, idempotencyKey))); }
 
-  @PostMapping("/interviews/{sessionId}/next-round")
+  @PostMapping("/interviews/{sessionId}/next-round") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<RoundResponse> nextRound(@PathVariable String sessionId, @RequestHeader("Idempotency-Key") String idempotencyKey) {
     MultiRoundEntity next = operationService.nextRound(sessionId, idempotencyKey);
     return Result.success(next != null ? RoundResponse.from(next) : null);
@@ -105,7 +101,7 @@ public class MultiRoundController {
     return Result.success(List.of("JAVA", "PYTHON", "CPP").stream().map(language -> new TemplateResponse(language, "v1", templateService.templateFor(language), "AI 静态评审，未执行代码")).toList());
   }
 
-  @PostMapping("/questions/{questionId}/algorithm-submissions")
+  @PostMapping("/questions/{questionId}/algorithm-submissions") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<SubmissionResponse> submit(@PathVariable Long questionId, @RequestHeader("Idempotency-Key") String idempotencyKey, @Valid @RequestBody SubmissionRequest request) {
     return Result.success(SubmissionResponse.from(operationService.submitAlgorithm(questionId, idempotencyKey, request.language(), request.sourceCode())));
   }
@@ -119,15 +115,20 @@ public class MultiRoundController {
     return Result.success(StaticReviewResponse.from(algorithmReviewService.review(submissionId)));
   }
 
-  public record SubmissionRequest(@NotBlank String language, @NotBlank String sourceCode) {}
+  // 请求体上限与服务层校验对齐，避免超大载荷先被完整反序列化进内存再被拒
+  public record SubmissionRequest(@NotBlank @Size(max = 16) String language,
+                                  @NotBlank @Size(max = 50_000) String sourceCode) {}
   public record TemplateResponse(String language, String templateVersion, String sourceCode, String notice) {}
   public record InterviewResponse(Long id, String status, int currentRoundNo, String providerId) {
     static InterviewResponse from(MultiRoundInterviewEntity value) { return new InterviewResponse(value.getId(), value.getStatus().name(), value.getCurrentRoundNo(), value.getProviderId()); }
   }
   public record RoundResponse(Long id, int roundNo, String roundType, String status, int questionLimit) { static RoundResponse from(interview.guide.modules.multiround.model.MultiRoundEntity value) { return new RoundResponse(value.getId(), value.getRoundNo(), value.getRoundType().name(), value.getStatus().name(), value.getQuestionLimit()); } }
   public record InterviewDetailResponse(InterviewResponse interview, List<RoundResponse> rounds) {}
-  public record AddQuestionRequest(@NotBlank String questionType, String categoryKey, @NotBlank String question, String referenceAnswer) {}
-  public record AnswerRequest(@NotBlank String answer) {}
+  public record AddQuestionRequest(@NotBlank @Size(max = 32) String questionType,
+                                   @Size(max = 128) String categoryKey,
+                                   @NotBlank @Size(max = 8_000) String question,
+                                   @Size(max = 8_000) String referenceAnswer) {}
+  public record AnswerRequest(@NotBlank @Size(max = 20_000) String answer) {}
   public record QuestionResponse(Long id, int sequenceNo, String questionType, String categoryKey, String question, String status, String answer) { static QuestionResponse from(interview.guide.modules.multiround.model.MultiRoundQuestionEntity value) { return new QuestionResponse(value.getId(), value.getSequenceNo(), value.getQuestionType(), value.getCategoryKey(), value.getQuestion(), value.getStatus().name(), value.getAnswer()); } }
   public record AgentPlanRequest(@NotBlank String trigger, @NotBlank @Size(max = 12000) String context) {}
   public record AgentPlanResponse(int roundNo, String roundType, int followUpCount, List<String> categoryKeys, int stepCount) {}

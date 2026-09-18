@@ -82,6 +82,26 @@ public class GlobalExceptionHandler {
     }
     
     /**
+     * 处理缺失必需请求头/请求参数
+     * 原先落到兜底 handler，返回「系统繁忙」，调用方无从得知是少传了 Idempotency-Key
+     */
+    @ExceptionHandler(org.springframework.web.bind.MissingRequestHeaderException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public Result<Void> handleMissingRequestHeaderException(
+            org.springframework.web.bind.MissingRequestHeaderException e) {
+        log.warn("缺少请求头: {}", e.getHeaderName());
+        return Result.error(ErrorCode.BAD_REQUEST, "缺少必需请求头: " + e.getHeaderName());
+    }
+
+    @ExceptionHandler(org.springframework.web.bind.MissingServletRequestParameterException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public Result<Void> handleMissingRequestParameterException(
+            org.springframework.web.bind.MissingServletRequestParameterException e) {
+        log.warn("缺少请求参数: {}", e.getParameterName());
+        return Result.error(ErrorCode.BAD_REQUEST, "缺少必需参数: " + e.getParameterName());
+    }
+
+    /**
      * 处理 AI 服务网络异常（SSL握手失败、连接超时等）
      * 统一返回 HTTP 200，通过业务错误码区分异常类型
      */

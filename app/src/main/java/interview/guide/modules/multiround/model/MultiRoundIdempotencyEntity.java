@@ -6,7 +6,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Entity @Table(name = "multi_round_idempotency") @Getter @Setter @NoArgsConstructor
+@Entity
+@Table(name = "multi_round_idempotency", uniqueConstraints = {
+    @UniqueConstraint(name = "multi_round_idempotency_unique_key",
+        columnNames = {"session_id", "operation_type", "idempotency_key"})
+})
+@Getter @Setter @NoArgsConstructor
 public class MultiRoundIdempotencyEntity {
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
   @Column(name = "session_id", nullable = false, length = 36) private String sessionId;

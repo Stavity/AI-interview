@@ -15,8 +15,8 @@ public class MultiRoundEntity {
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
   @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "multi_round_interview_id", nullable = false) private MultiRoundInterviewEntity interview;
   @Column(name = "round_no", nullable = false) private int roundNo;
-  @Enumerated(EnumType.STRING) @Column(name = "round_type", nullable = false) private Type roundType;
-  @Enumerated(EnumType.STRING) @Column(nullable = false) private Status status = Status.PENDING;
+  @Enumerated(EnumType.STRING) @Column(name = "round_type", nullable = false, length = 32) private Type roundType;
+  @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) private Status status = Status.PENDING;
   @Column(name = "question_limit", nullable = false) private int questionLimit;
   @Column(name = "started_at") private LocalDateTime startedAt;
   @Column(name = "completed_at") private LocalDateTime completedAt;

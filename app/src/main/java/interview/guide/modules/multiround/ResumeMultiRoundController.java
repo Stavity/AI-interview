@@ -1,5 +1,6 @@
 package interview.guide.modules.multiround;
 
+import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
 import interview.guide.modules.multiround.dto.MultiRoundInterviewBootstrapResponse;
 import interview.guide.modules.multiround.dto.StartMultiRoundInterviewRequest;
@@ -19,6 +20,7 @@ public class ResumeMultiRoundController {
   private final MultiRoundInterviewBootstrapService bootstrapService;
 
   @PostMapping("/api/resumes/{resumeId}/multi-round-interviews")
+  @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<MultiRoundInterviewBootstrapResponse> start(
       @PathVariable Long resumeId,
       @RequestHeader("Idempotency-Key") String idempotencyKey,

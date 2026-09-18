@@ -23,10 +23,17 @@ public class MultiRoundPlanningContextFactory {
     List<String> questions = new ArrayList<>();
     List<String> answers = new ArrayList<>();
     List<String> reports = new ArrayList<>();
-    for (MultiRoundEntity round : roundRepository.findByInterviewIdOrderByRoundNoAsc(interview.getId())) {
-      if (round.getRoundNo() >= currentRound.getRoundNo()) continue;
+    List<MultiRoundEntity> priorRounds = roundRepository.findByInterviewIdOrderByRoundNoAsc(interview.getId())
+        .stream()
+        .filter(round -> round.getRoundNo() < currentRound.getRoundNo())
+        .toList();
+    for (MultiRoundEntity round : priorRounds) {
       if (round.getReportJson() != null && !round.getReportJson().isBlank()) reports.add(limit(round.getReportJson()));
-      for (MultiRoundQuestionEntity question : questionRepository.findByRoundIdOrderBySequenceNoAsc(round.getId())) {
+    }
+    if (!priorRounds.isEmpty()) {
+      // 批量取题目：原实现按轮次逐条查询，造成 1 + N 次查询
+      for (MultiRoundQuestionEntity question : questionRepository
+          .findByRoundIdInOrderByRoundIdAscSequenceNoAsc(priorRounds.stream().map(MultiRoundEntity::getId).toList())) {
         if (question.getQuestion() != null && !question.getQuestion().isBlank()) questions.add(limit(question.getQuestion()));
         if (question.getAnswer() != null && !question.getAnswer().isBlank()) answers.add(limit(question.getAnswer()));
       }

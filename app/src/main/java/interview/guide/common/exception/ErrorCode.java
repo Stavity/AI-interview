@@ -90,7 +90,8 @@ public enum ErrorCode {
     CODE_TOO_LARGE(12004, "代码超出大小限制"),
     SKILL_UNAVAILABLE(12005, "学习技能来源不可用"),
     REMINDER_PERMISSION_REQUIRED(12006, "提醒需要浏览器通知权限"),
-    MULTI_ROUND_RESUME_REQUIRED(12007, "多轮面试必须绑定已解析简历");
+    MULTI_ROUND_RESUME_REQUIRED(12007, "多轮面试必须绑定已解析简历"),
+    MULTI_ROUND_OPERATION_IN_PROGRESS(12008, "同一操作正在处理中，请稍后重试");
 
     private final Integer code;
     private final String message;

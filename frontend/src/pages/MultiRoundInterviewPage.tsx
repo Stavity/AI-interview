@@ -1,4 +1,4 @@
-import { FormEvent, lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ChevronRight, Clock, Loader2, Play, Square } from 'lucide-react';
 import { multiRoundApi, type AgentRunTrace, type MultiRoundDetail, type MultiRoundQuestion, type MultiRoundReport } from '../api/multiRound';
@@ -26,41 +26,50 @@ export default function MultiRoundInterviewPage() {
   const initialSessionId = params.get('sessionId') ?? '';
   const [activeSessionId] = useState(initialSessionId);
   const [questions, setQuestions] = useState<MultiRoundQuestion[]>([]);
-  const [answer, setAnswer] = useState('');
+  // 每道题各自的草稿，键为 questionId。
+  // 原实现是单个 answer state：一轮多题时所有输入框共享同一值，
+  // 且提交时固定取第一道 PENDING 题——在第 2 题输入会写到第 1 题上。
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // 正在进行中的操作标识，用于禁用按钮防重复提交
+  const [busy, setBusy] = useState<string | null>(null);
   const [interview, setInterview] = useState<MultiRoundDetail | null>(null);
   const [report, setReport] = useState<MultiRoundReport | null>(null);
   const [traces, setTraces] = useState<AgentRunTrace[]>([]);
   const [learningPreview, setLearningPreview] = useState<InterviewRecommendationPreview | null>(null);
   const [activeRoundId, setActiveRoundId] = useState<number | null>(null);
   const answerKeys = useRef(new Map<number, string>());
+  // 视图请求序号：reloadInterview 与 selectRound 都会写 activeRoundId/questions，
+  // 并发时靠它丢弃过期响应，避免旧结果覆盖新状态
+  const viewSeq = useRef(0);
+  const mounted = useRef(true);
+
+  useEffect(() => () => { mounted.current = false; }, []);
 
   const reloadInterview = async (sid: string) => {
+    const seq = ++viewSeq.current;
     const [detail, value, trace] = await Promise.all([
       multiRoundApi.getInterview(sid),
       multiRoundApi.getReport(sid),
       multiRoundApi.getAgentTrace(sid),
     ]);
+    if (seq !== viewSeq.current || !mounted.current) return;
     setInterview(detail);
     setReport(value);
     setTraces(trace);
-    // Auto-select the current round's questions
+
     const currentRound = detail.rounds.find(r => r.status === 'IN_PROGRESS');
     if (currentRound) {
-      setActiveRoundId(currentRound.id);
       const qs = await multiRoundApi.listQuestions(currentRound.id);
+      if (seq !== viewSeq.current || !mounted.current) return;
+      setActiveRoundId(currentRound.id);
       setQuestions(qs);
-    } else {
-      const nextRound = detail.rounds.find(r => r.status === 'PENDING' && r.roundNo === detail.interview.currentRoundNo + 1);
-      if (nextRound) {
-        setActiveRoundId(nextRound.id);
-        setQuestions([]);
-      } else {
-        setActiveRoundId(null);
-        setQuestions([]);
-      }
+      return;
     }
+    const nextRound = detail.rounds.find(r => r.status === 'PENDING' && r.roundNo === detail.interview.currentRoundNo + 1);
+    setActiveRoundId(nextRound ? nextRound.id : null);
+    setQuestions([]);
   };
 
   useEffect(() => {
@@ -71,66 +80,106 @@ export default function MultiRoundInterviewPage() {
     setLoading(true);
     reloadInterview(activeSessionId)
       .catch(() => setError('多轮会话创建或加载失败'))
-      .finally(() => setLoading(false));
+      .finally(() => { if (mounted.current) setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSessionId, navigate]);
 
-  const submitAnswer = async (event: FormEvent) => {
+  const submitAnswer = async (event: FormEvent, question: MultiRoundQuestion) => {
     event.preventDefault();
-    const item = questions.find(q => q.status === 'PENDING');
-    if (!item || !answer.trim()) return;
-    const key = answerKeys.current.get(item.id) ?? `answer:${item.id}:${crypto.randomUUID()}`;
-    answerKeys.current.set(item.id, key);
+    const draft = (answers[question.id] ?? '').trim();
+    if (!draft || busy) return;
+    setError('');
+    setBusy(`answer:${question.id}`);
+    // 同一题复用同一幂等键：重试提交同一答案不会重复写入
+    const key = answerKeys.current.get(question.id) ?? `answer:${question.id}:${crypto.randomUUID()}`;
+    answerKeys.current.set(question.id, key);
     try {
-      await multiRoundApi.answerQuestion(item.id, key, answer);
-      setQuestions(prev => prev.map(q => q.id === item.id ? { ...q, answer, status: 'ANSWERED' } : q));
-      setAnswer('');
+      await multiRoundApi.answerQuestion(question.id, key, draft);
+      if (!mounted.current) return;
+      setQuestions(prev => prev.map(q => q.id === question.id ? { ...q, answer: draft, status: 'ANSWERED' } : q));
+      setAnswers(prev => { const next = { ...prev }; delete next[question.id]; return next; });
     } catch {
-      setError('提交回答失败');
+      if (mounted.current) setError('提交回答失败');
+    } finally {
+      if (mounted.current) setBusy(null);
     }
   };
 
   const startRound = async (id: number) => {
+    if (busy) return;
     setError('');
+    setBusy(`start:${id}`);
     try {
       await multiRoundApi.startRound(id, `round-start:${id}:${crypto.randomUUID()}`);
       await reloadInterview(activeSessionId);
     } catch {
-      setError('轮次启动失败');
+      if (mounted.current) setError('轮次启动失败');
+    } finally {
+      if (mounted.current) setBusy(null);
     }
   };
 
+  /**
+   * 结束本轮后进入下一轮。
+   * 两步分开处理：原实现把 finish 与 nextRound 串在同一个 try 里，
+   * finish 成功而 nextRound 失败时会提示「当前轮次尚不能结束」（与事实相反）且跳过 reload，
+   * 界面仍显示进行中，用户只能刷新页面才能恢复。
+   */
   const finishRound = async (id: number) => {
+    if (busy) return;
     setError('');
+    setBusy(`finish:${id}`);
+    let finished = false;
     try {
       await multiRoundApi.finishRound(id, `round-finish:${id}:${crypto.randomUUID()}`);
+      finished = true;
       await multiRoundApi.nextRound(activeSessionId, `next-round:${id}:${crypto.randomUUID()}`);
-      await reloadInterview(activeSessionId);
     } catch {
-      setError('当前轮次尚不能结束');
+      if (mounted.current) {
+        setError(finished ? '本轮已结束，但进入下一轮失败，请重试' : '当前轮次尚不能结束');
+      }
+    } finally {
+      // 无论哪一步失败都刷新，保证界面与服务端状态一致
+      try {
+        await reloadInterview(activeSessionId);
+      } catch {
+        if (mounted.current) setError('状态刷新失败，请重新加载页面');
+      }
+      if (mounted.current) setBusy(null);
     }
   };
 
   const selectRound = async (roundId: number) => {
+    setError('');
+    const seq = ++viewSeq.current;
     setActiveRoundId(roundId);
     try {
       const qs = await multiRoundApi.listQuestions(roundId);
+      if (seq !== viewSeq.current || !mounted.current) return;
       setQuestions(qs);
     } catch {
-      setError('题目加载失败');
+      if (mounted.current) setError('题目加载失败');
     }
   };
 
   const loadLearningPreview = async () => {
-    if (!activeSessionId) return;
+    if (!activeSessionId || busy) return;
+    setError('');
+    setBusy('learning');
     try {
-      setLearningPreview(await learningApi.recommendationsFromInterview(activeSessionId));
+      const preview = await learningApi.recommendationsFromInterview(activeSessionId);
+      if (mounted.current) setLearningPreview(preview);
     } catch {
-      setError('学习建议加载失败');
+      if (mounted.current) setError('学习建议加载失败');
+    } finally {
+      if (mounted.current) setBusy(null);
     }
   };
 
   const currentRound = interview?.rounds.find(r => r.id === activeRoundId);
   const isAlgorithmRound = currentRound?.roundType === 'ALGORITHM';
+  // 算法轮取待作答题目，没有待答的再退回首题；原实现盲取 questions[0]
+  const algorithmQuestion = questions.find(q => q.status === 'PENDING') ?? questions[0];
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -163,10 +212,15 @@ export default function MultiRoundInterviewPage() {
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {interview.rounds.map(round => (
-                <button
+                /* 外层改用 div：button 内嵌 button 属非法 HTML，浏览器会提前闭合外层按钮 */
+                <div
                   key={round.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={activeRoundId === round.id}
                   onClick={() => selectRound(round.id)}
-                  className={`rounded-xl border p-3 text-left transition-all ${ROUND_COLORS[round.roundType] ?? 'border-slate-200'} ${activeRoundId === round.id ? 'ring-2 ring-primary-500' : ''}`}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectRound(round.id); } }}
+                  className={`cursor-pointer rounded-xl border p-3 text-left transition-all ${ROUND_COLORS[round.roundType] ?? 'border-slate-200'} ${activeRoundId === round.id ? 'ring-2 ring-primary-500' : ''}`}
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{round.roundNo}. {ROUND_LABELS[round.roundType] ?? round.roundType}</p>
@@ -175,24 +229,39 @@ export default function MultiRoundInterviewPage() {
                   <p className="mt-1 text-xs text-slate-500">{round.status} · 最多 {round.questionLimit} 题</p>
                   {round.status === 'PENDING' && round.roundNo === interview.interview.currentRoundNo + 1 && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); startRound(round.id); }}
-                      className="mt-2 flex items-center gap-1 rounded-md bg-primary-600 px-2 py-1 text-xs text-white"
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={e => { e.stopPropagation(); startRound(round.id); }}
+                      className="mt-2 flex items-center gap-1 rounded-md bg-primary-600 px-2 py-1 text-xs text-white disabled:opacity-50"
                     >
-                      <Play className="w-3 h-3" /> 启动本轮
+                      {busy === `start:${round.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                      {busy === `start:${round.id}` ? '启动中' : '启动本轮'}
                     </button>
                   )}
                   {round.status === 'IN_PROGRESS' && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); finishRound(round.id); }}
-                      className="mt-2 flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-slate-600"
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={e => { e.stopPropagation(); finishRound(round.id); }}
+                      className="mt-2 flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-slate-600"
                     >
-                      <Square className="w-3 h-3" /> 结束本轮
+                      {busy === `finish:${round.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+                      {busy === `finish:${round.id}` ? '结束中' : '结束本轮'}
                     </button>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           </section>
+
+          {/* 空状态：已选中轮次但尚无题目，原实现此处是一片空白 */}
+          {currentRound && questions.length === 0 && !loading && (
+            <section className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
+              {currentRound.status === 'PENDING'
+                ? '本轮尚未启动，点击上方「启动本轮」开始出题。'
+                : '本轮暂无题目，稍后重试或重新启动本轮。'}
+            </section>
+          )}
 
           {/* Questions for active round */}
           {currentRound && questions.length > 0 && (
@@ -208,14 +277,20 @@ export default function MultiRoundInterviewPage() {
                   <p className="text-xs text-primary-600">第 {question.sequenceNo} 题 · {question.categoryKey || question.questionType}</p>
                   <p className="mt-3 text-slate-900 dark:text-white">{question.question}</p>
                   {question.status === 'PENDING' && !isAlgorithmRound && (
-                    <form onSubmit={submitAnswer} className="mt-4">
+                    <form onSubmit={e => submitAnswer(e, question)} className="mt-4">
                       <textarea
-                        value={answer}
-                        onChange={e => setAnswer(e.target.value)}
+                        value={answers[question.id] ?? ''}
+                        onChange={e => setAnswers(prev => ({ ...prev, [question.id]: e.target.value }))}
                         className="h-28 w-full rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700 dark:bg-slate-800"
                         placeholder="输入你的回答…"
                       />
-                      <button className="mt-2 rounded-lg bg-primary-600 px-4 py-2 text-sm text-white">提交回答</button>
+                      <button
+                        type="submit"
+                        disabled={busy !== null || !(answers[question.id] ?? '').trim()}
+                        className="mt-2 rounded-lg bg-primary-600 px-4 py-2 text-sm text-white disabled:opacity-50"
+                      >
+                        {busy === `answer:${question.id}` ? '提交中…' : '提交回答'}
+                      </button>
                     </form>
                   )}
                   {question.answer && (
@@ -227,9 +302,9 @@ export default function MultiRoundInterviewPage() {
           )}
 
           {/* Algorithm editor for algorithm round */}
-          {isAlgorithmRound && currentRound && questions.length > 0 && (
+          {isAlgorithmRound && currentRound && algorithmQuestion && (
             <Suspense fallback={<div className="rounded-xl border border-slate-200 p-4 text-sm text-slate-500 dark:border-slate-700">加载代码编辑器…</div>}>
-              <AlgorithmEditor questionId={questions[0].id} />
+              <AlgorithmEditor questionId={algorithmQuestion.id} />
             </Suspense>
           )}
 
@@ -250,7 +325,14 @@ export default function MultiRoundInterviewPage() {
                   ))}
                 </div>
               )}
-              <button onClick={loadLearningPreview} className="mt-4 rounded-lg border border-primary-300 px-3 py-2 text-xs text-primary-700 dark:border-primary-700 dark:text-primary-300">查看学习建议</button>
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={loadLearningPreview}
+                className="mt-4 rounded-lg border border-primary-300 px-3 py-2 text-xs text-primary-700 disabled:opacity-50 dark:border-primary-700 dark:text-primary-300"
+              >
+                {busy === 'learning' ? '加载中…' : '查看学习建议'}
+              </button>
               {learningPreview && (
                 <div className="mt-3 rounded-lg bg-primary-50 p-3 text-xs text-primary-900 dark:bg-primary-900/20 dark:text-primary-100">
                   <p>{learningPreview.reportSummary}</p>

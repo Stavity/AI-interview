@@ -38,10 +38,13 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const [multiRoundSkillId, setMultiRoundSkillId] = useState('java-backend');
   const [multiRoundDifficulty, setMultiRoundDifficulty] = useState<'junior' | 'mid' | 'senior'>('mid');
   const [multiRoundJd, setMultiRoundJd] = useState('');
+  const [multiRoundError, setMultiRoundError] = useState('');
 
   const startMultiRoundInterview = async () => {
+    if (startingMultiRound) return;
     try {
       setStartingMultiRound(true);
+      setMultiRoundError('');
       const active = await multiRoundApi.getActiveForResume(resumeId);
       if (active) {
         navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(active.sessionId)}`);
@@ -51,6 +54,9 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
         skillId: multiRoundSkillId, difficulty: multiRoundDifficulty, jdText: multiRoundJd.trim() || undefined,
       }, `multi-round-resume:${resumeId}:${crypto.randomUUID()}`);
       navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(created.sessionId)}`);
+    } catch (err) {
+      // 原实现只有 try/finally：失败时按钮闪一下回弹，用户得不到任何反馈
+      setMultiRoundError(err instanceof Error ? err.message : '多轮面试启动失败，请稍后重试');
     } finally {
       setStartingMultiRound(false);
     }
@@ -422,8 +428,11 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
                 <textarea value={multiRoundJd} onChange={event => setMultiRoundJd(event.target.value)} rows={4} className="mt-1.5 w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white" />
               </label>
             </div>
+            {multiRoundError && (
+              <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">{multiRoundError}</p>
+            )}
             <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => setShowMultiRoundOptions(false)} className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">取消</button>
+              <button type="button" onClick={() => { setShowMultiRoundOptions(false); setMultiRoundError(''); }} className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">取消</button>
               <button type="button" onClick={startMultiRoundInterview} disabled={startingMultiRound} className="px-4 py-2 rounded-md bg-primary-600 text-sm font-medium text-white disabled:opacity-50">{startingMultiRound ? '准备中...' : '开始面试'}</button>
             </div>
           </div>

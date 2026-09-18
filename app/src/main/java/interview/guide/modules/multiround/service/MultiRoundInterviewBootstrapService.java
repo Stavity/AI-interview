@@ -3,8 +3,7 @@ package interview.guide.modules.multiround.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.model.AsyncTaskStatus;
-import interview.guide.modules.interview.model.InterviewSessionEntity;
-import interview.guide.modules.interview.repository.InterviewSessionRepository;
+import interview.guide.infrastructure.redis.RedisService;
 import interview.guide.modules.multiround.dto.MultiRoundInterviewBootstrapResponse;
 import interview.guide.modules.multiround.dto.StartMultiRoundInterviewRequest;
 import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
@@ -15,19 +14,25 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class MultiRoundInterviewBootstrapService {
+  private static final long LOCK_WAIT_SECONDS = 20;
+  private static final long LOCK_LEASE_SECONDS = 120;
+
   private final ResumeRepository resumeRepository;
   private final ResumeAnalysisRepository analysisRepository;
-  private final InterviewSessionRepository sessionRepository;
   private final MultiRoundInterviewRepository interviewRepository;
-  private final MultiRoundInterviewService interviewService;
+  private final MultiRoundBootstrapPersistenceService persistenceService;
+  private final RedisService redisService;
 
   private static final List<MultiRoundInterviewEntity.Status> ACTIVE_STATUSES = List.of(
       MultiRoundInterviewEntity.Status.CREATED,
@@ -36,7 +41,14 @@ public class MultiRoundInterviewBootstrapService {
       MultiRoundInterviewEntity.Status.ROUND_EVALUATING,
       MultiRoundInterviewEntity.Status.ROUND_COMPLETED);
 
-  @Transactional
+  /**
+   * 启动多轮面试。同一 scopeFingerprint 的并发请求由分布式锁串行化，
+   * 锁失效时由 uq_multi_round_active_scope 唯一索引兜底——此时在事务外回读活跃面试，
+   * 返回 resumed 响应而非 500。
+   * <p>
+   * 本方法不带事务：持久化在 {@link MultiRoundBootstrapPersistenceService} 的独立事务内完成，
+   * 否则唯一索引冲突会污染当前事务，导致无法在同一事务内回读。
+   */
   public MultiRoundInterviewBootstrapResponse start(
       Long resumeId, StartMultiRoundInterviewRequest request, String idempotencyKey) {
     var resume = resumeRepository.findById(resumeId)
@@ -61,30 +73,30 @@ public class MultiRoundInterviewBootstrapService {
       return response(active.get(), true);
     }
 
-    InterviewSessionEntity session = new InterviewSessionEntity();
-    session.setSessionId(UUID.randomUUID().toString().replace("-", "").substring(0, 16));
-    session.setResume(resume);
-    session.setSkillId(request.skillId());
-    session.setDifficulty(request.difficulty());
-    session.setSourceType("MULTI_ROUND");
-    session.setStatus(InterviewSessionEntity.SessionStatus.CREATED);
-    session.setTotalQuestions(0);
-    session.setCurrentQuestionIndex(0);
-    session.setQuestionsJson("[]");
-    sessionRepository.save(session);
-
-    MultiRoundInterviewEntity interview = interviewService.createUsingDefaultProvider(
-        session.getSessionId(), idempotencyKey);
-    interview.setInterviewSession(session);
     String snapshot = resume.getResumeText().trim() + "\n\n简历分析摘要:\n" + analysis.getSummary().trim();
-    interview.setResumeSnapshot(snapshot);
-    interview.setResumeSnapshotVersion(sha256(snapshot));
-    interview.setJdSnapshot(normalizedJd);
-    interview.setSkillId(request.skillId());
-    interview.setDifficulty(request.difficulty());
-    interview.setScopeFingerprint(scopeFingerprint);
-    interviewRepository.save(interview);
-    return response(interview, false);
+    return redisService.executeWithLock(
+        "multiround:bootstrap:" + scopeFingerprint,
+        LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS, TimeUnit.SECONDS,
+        () -> {
+          var underLock = interviewRepository.findFirstByScopeFingerprintAndStatusIn(
+              scopeFingerprint, ACTIVE_STATUSES);
+          if (underLock.isPresent()) {
+            return response(underLock.get(), true);
+          }
+          try {
+            MultiRoundInterviewEntity created = persistenceService.create(
+                resumeId, request.skillId(), request.difficulty(), idempotencyKey,
+                normalizedJd, scopeFingerprint, snapshot, sha256(snapshot));
+            return response(created, false);
+          } catch (DataIntegrityViolationException conflict) {
+            log.info("多轮面试范围指纹冲突，回读既有活跃面试: resumeId={}", resumeId);
+            return interviewRepository
+                .findFirstByScopeFingerprintAndStatusIn(scopeFingerprint, ACTIVE_STATUSES)
+                .map(existing -> response(existing, true))
+                .orElseThrow(() -> new BusinessException(
+                    ErrorCode.MULTI_ROUND_OPERATION_IN_PROGRESS, "多轮面试正在创建中，请稍后重试"));
+          }
+        });
   }
 
   @Transactional(readOnly = true)

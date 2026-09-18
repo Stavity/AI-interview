@@ -45,6 +45,18 @@ class MultiRoundInterviewServiceTest {
 
     assertThat(result.getStatus()).isEqualTo(MultiRoundInterviewEntity.Status.ROUND_READY);
     assertThat(result.getCurrentRoundNo()).isZero();
+
+    // 原测试只看 status/currentRoundNo——即使一轮都没创建也能通过
+    @SuppressWarnings("unchecked")
+    var captor = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+    org.mockito.Mockito.verify(roundRepository).saveAll(captor.capture());
+    java.util.List<interview.guide.modules.multiround.model.MultiRoundEntity> rounds = captor.getValue();
+    assertThat(rounds).hasSize(4);
+    assertThat(rounds).extracting(r -> r.getRoundType().name())
+        .containsExactly("ALGORITHM", "TECHNICAL_1", "TECHNICAL_2", "HR");
+    assertThat(rounds).extracting(interview.guide.modules.multiround.model.MultiRoundEntity::getRoundNo)
+        .containsExactly(1, 2, 3, 4);
+    assertThat(rounds).allSatisfy(round -> assertThat(round.getQuestionLimit()).isPositive());
   }
 
   @Test
@@ -63,22 +75,20 @@ class MultiRoundInterviewServiceTest {
   }
 
   @Test
-  @DisplayName("多轮面试保留创建时的简历与岗位快照")
-  void shouldRetainResumeScopedSnapshot() {
-    MultiRoundInterviewEntity interview = new MultiRoundInterviewEntity();
+  @DisplayName("已存在多轮扩展时不重复创建轮次")
+  void shouldNotRecreateRoundsWhenInterviewExists() {
+    InterviewSessionEntity session = new InterviewSessionEntity();
+    session.setId(7L);
+    MultiRoundInterviewEntity existing = new MultiRoundInterviewEntity();
+    existing.setId(55L);
+    when(sessionRepository.findBySessionId("session-7")).thenReturn(Optional.of(session));
+    when(interviewRepository.findByInterviewSessionId(7L)).thenReturn(Optional.of(existing));
 
-    interview.setResumeSnapshot("candidate resume");
-    interview.setResumeSnapshotVersion("resume-v1");
-    interview.setJdSnapshot("Java backend engineer");
-    interview.setSkillId("java-backend");
-    interview.setDifficulty("mid");
-    interview.setScopeFingerprint("scope-fingerprint");
+    var result = new MultiRoundInterviewService(sessionRepository, interviewRepository, roundRepository,
+        settingRepository, providerRepository, idempotencyService)
+        .create("session-7", "provider-a", "fingerprint");
 
-    assertThat(interview.getResumeSnapshot()).isEqualTo("candidate resume");
-    assertThat(interview.getResumeSnapshotVersion()).isEqualTo("resume-v1");
-    assertThat(interview.getJdSnapshot()).isEqualTo("Java backend engineer");
-    assertThat(interview.getSkillId()).isEqualTo("java-backend");
-    assertThat(interview.getDifficulty()).isEqualTo("mid");
-    assertThat(interview.getScopeFingerprint()).isEqualTo("scope-fingerprint");
+    assertThat(result).isSameAs(existing);
+    org.mockito.Mockito.verify(roundRepository, org.mockito.Mockito.never()).saveAll(any());
   }
 }

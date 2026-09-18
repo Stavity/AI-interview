@@ -22,9 +22,10 @@ class AgentRunTraceServiceTest {
   @Test @DisplayName("轨迹只返回已脱敏的步骤摘要")
   void shouldReturnTraceWithoutRunInput() {
     AgentRunAuditEntity run = new AgentRunAuditEntity(); run.setId(7L); run.setTriggerType("NEXT_QUESTION"); run.setStatus(AgentRunAuditEntity.Status.SUCCEEDED);
-    AgentRunStepAuditEntity step = new AgentRunStepAuditEntity(); step.setStepNo(1); step.setToolName("PLAN"); step.setStatus("SUCCEEDED"); step.setOutputSummary("round=2");
+    AgentRunStepAuditEntity step = new AgentRunStepAuditEntity(); step.setRun(run); step.setStepNo(1); step.setToolName("PLAN"); step.setStatus("SUCCEEDED"); step.setOutputSummary("round=2");
     when(runRepository.findByInterviewIdOrderByStartedAtDesc(3L)).thenReturn(List.of(run));
-    when(stepRepository.findByRunIdOrderByStepNoAsc(7L)).thenReturn(List.of(step));
+    // 改为批量取步骤后按 run 分组，避免 1+N 查询
+    when(stepRepository.findByRunIdInOrderByStepNoAsc(List.of(7L))).thenReturn(List.of(step));
 
     var trace = new AgentRunTraceService(runRepository, stepRepository).list(3L);
 

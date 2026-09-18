@@ -43,7 +43,9 @@ class MultiRoundPlanningContextFactoryTest {
     current.setRoundType(MultiRoundEntity.Type.TECHNICAL_1);
     current.setQuestionLimit(2);
     when(roundRepository.findByInterviewIdOrderByRoundNoAsc(10L)).thenReturn(List.of(previous, current));
-    when(questionRepository.findByRoundIdOrderBySequenceNoAsc(11L)).thenReturn(List.of(priorQuestion));
+    // 改为批量取题目，避免按轮次 1+N 查询
+    when(questionRepository.findByRoundIdInOrderByRoundIdAscSequenceNoAsc(List.of(11L)))
+        .thenReturn(List.of(priorQuestion));
 
     InterviewPlanningContext context = new MultiRoundPlanningContextFactory(roundRepository, questionRepository)
         .create(interview, current);

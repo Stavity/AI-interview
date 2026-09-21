@@ -131,33 +131,50 @@ export default function Interview({
     }
   };
 
-  const initSession = (s: InterviewSession) => {
-    setSession(s);
-
-    if (s.questions.length > 0) {
-      const idx = Math.min(s.currentQuestionIndex, s.questions.length - 1);
-      const currentQ = s.questions[idx];
-      setCurrentQuestion(currentQ);
-
-      // 重建消息历史
-      const restoredMessages: Message[] = [];
-      for (let i = 0; i <= idx; i++) {
-        const q = s.questions[i];
-        restoredMessages.push({
-          type: 'interviewer',
-          content: q.question,
-          category: q.category,
-          questionIndex: i
-        });
-        if (q.userAnswer) {
-          restoredMessages.push({
-            type: 'user',
-            content: q.userAnswer
-          });
-        }
-      }
-      setMessages(restoredMessages);
+  const initSession = (s: InterviewSession): boolean => {
+    // 过去这里会在 questions 为空时保留 session=null 之外的半初始化状态，
+    // 最终命中下面的 `return null`，用户只会看到一个空白页面。
+    if (!Array.isArray(s.questions) || s.questions.length === 0) {
+      setError('该面试会话没有可继续的题目，请返回面试记录后重新开始。');
+      return false;
     }
+
+    if (!Number.isInteger(s.currentQuestionIndex)
+      || s.currentQuestionIndex < 0
+      || s.currentQuestionIndex >= s.questions.length) {
+      setError('该面试会话的进度数据异常，无法继续面试。');
+      return false;
+    }
+
+    const idx = s.currentQuestionIndex;
+    const currentQ = s.questions[idx];
+    if (!currentQ) {
+      setError('该面试会话的当前题目不存在，无法继续面试。');
+      return false;
+    }
+
+    setSession(s);
+    setCurrentQuestion(currentQ);
+
+    // 重建消息历史
+    const restoredMessages: Message[] = [];
+    for (let i = 0; i <= idx; i++) {
+      const q = s.questions[i];
+      restoredMessages.push({
+        type: 'interviewer',
+        content: q.question,
+        category: q.category,
+        questionIndex: i
+      });
+      if (q.userAnswer) {
+        restoredMessages.push({
+          type: 'user',
+          content: q.userAnswer
+        });
+      }
+    }
+    setMessages(restoredMessages);
+    return true;
   };
 
   const handleSubmitAnswer = async () => {

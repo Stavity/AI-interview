@@ -45,7 +45,14 @@ export default function MultiRoundInterviewPage() {
   const viewSeq = useRef(0);
   const mounted = useRef(true);
 
-  useEffect(() => () => { mounted.current = false; }, []);
+  // React StrictMode 在开发环境会执行一次 setup → cleanup → setup。
+  // 每次 setup 都恢复标记，避免第一次 cleanup 让后续请求结果永久被忽略。
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const reloadInterview = async (sid: string) => {
     const seq = ++viewSeq.current;

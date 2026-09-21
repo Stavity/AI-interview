@@ -339,8 +339,8 @@ public class InterviewSessionService {
                 status
             );
 
-            log.info("从数据库恢复会话到 Redis: sessionId={}, currentIndex={}, status={}",
-                entity.getSessionId(), entity.getCurrentQuestionIndex(), entity.getStatus());
+            log.info("从数据库恢复会话到 Redis: sessionId={}, currentIndex={}, status={}, questionCount={}",
+                entity.getSessionId(), entity.getCurrentQuestionIndex(), entity.getStatus(), questions.size());
 
             // 返回缓存的会话
             return sessionCache.getSession(entity.getSessionId()).orElse(null);

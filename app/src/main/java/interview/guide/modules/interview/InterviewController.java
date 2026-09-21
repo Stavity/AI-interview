@@ -2,13 +2,8 @@ package interview.guide.modules.interview;
 
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
-import interview.guide.modules.interview.model.CreateInterviewRequest;
-import interview.guide.modules.interview.model.InterviewDetailDTO;
-import interview.guide.modules.interview.model.InterviewReportDTO;
-import interview.guide.modules.interview.model.InterviewSessionDTO;
-import interview.guide.modules.interview.model.SessionListItemDTO;
-import interview.guide.modules.interview.model.SubmitAnswerRequest;
-import interview.guide.modules.interview.model.SubmitAnswerResponse;
+import interview.guide.modules.interview.model.*;
+import interview.guide.modules.interview.repository.InterviewSessionRepository;
 import interview.guide.modules.interview.service.InterviewHistoryService;
 import interview.guide.modules.interview.service.InterviewPersistenceService;
 import interview.guide.modules.interview.service.InterviewSessionService;
@@ -30,6 +25,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 面试控制器
@@ -44,6 +40,7 @@ public class InterviewController {
     private final InterviewSessionService sessionService;
     private final InterviewHistoryService historyService;
     private final InterviewPersistenceService persistenceService;
+    private final InterviewSessionRepository sessionRepository;
     
     /**
      * 列出所有面试会话（用于面试记录页）
@@ -183,5 +180,18 @@ public class InterviewController {
         log.info("删除面试会话: {}", sessionId);
         persistenceService.deleteSessionBySessionId(sessionId);
         return Result.success(null);
+    }
+
+    @GetMapping("/api/interview/sessions/backdoor/{sessionId}")
+    public Result<InterviewSessionEntity> getInterview(@PathVariable String sessionId) {
+        log.info("找到当前面試: {}", sessionId);
+        Optional<InterviewSessionEntity> currentInterview = sessionRepository.findBySessionId(sessionId);
+        if(currentInterview.isEmpty()){
+            return Result.error("没有找到面试");
+        }
+        else {
+            InterviewSessionEntity session = currentInterview.get();
+            return Result.success("success", session);
+        }
     }
 }

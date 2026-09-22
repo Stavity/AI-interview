@@ -53,6 +53,9 @@ public class MultiRoundOperationService {
   private final AlgorithmSubmissionService submissionService;
   private final MultiRoundQuestionGenerationService questionGenerationService;
   private final InterviewAgentOrchestrator agentOrchestrator;
+  private final MultiRoundCheckpointMutationService checkpointMutationService;
+  private final MultiRoundLearningAdviceService learningAdviceService;
+  private final MultiRoundWorkflowService workflowService;
   private final RedisService redisService;
   private final ObjectMapper objectMapper;
 
@@ -154,7 +157,10 @@ public class MultiRoundOperationService {
               question.getRound().getInterview(), "QUESTION", questionId);
           return true;
         });
-    if (accepted) progressAfterCandidateAction(question.getRound().getId());
+    if (accepted) {
+      workflowService.heartbeat(question.getRound().getInterview());
+      progressAfterCandidateAction(question.getRound().getId());
+    }
   }
 
   /**
@@ -175,7 +181,10 @@ public class MultiRoundOperationService {
       finishRound(roundId, "system-auto-finish:" + roundId);
       MultiRoundEntity next = nextRound(sessionId, "system-auto-next:" + roundId);
       if (next != null) {
+        checkpointMutationService.mutateBeforeStart(next.getInterview(), next);
         startRound(next.getId(), "system-auto-start:" + next.getId());
+      } else {
+        learningAdviceService.generateIfCompleted(interviewService.getBySessionId(sessionId));
       }
     } catch (BusinessException error) {
       // A node may be completed concurrently. The next user action or recovery read can safely

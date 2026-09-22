@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class MultiRoundWorkflowService {
   public static final String STATIC_DEFINITION_VERSION = "static-interview-v1";
+  private static final long LEASE_MINUTES = 30;
 
   private final MultiRoundWorkflowInstanceRepository workflowRepository;
   private final MultiRoundWorkflowEventRepository eventRepository;
@@ -79,6 +80,7 @@ public class MultiRoundWorkflowService {
   public void nodeStarted(MultiRoundInterviewEntity interview, MultiRoundEntity node) {
     MultiRoundWorkflowInstanceEntity workflow = workflowFor(interview);
     workflow.setStatus(MultiRoundWorkflowInstanceEntity.Status.RUNNING);
+    workflow.setLeaseUntil(java.time.LocalDateTime.now().plusMinutes(LEASE_MINUTES));
     workflow.setCheckpointKey("NODE_" + nodeKey(node) + "_IN_PROGRESS");
     workflow.setStateJson(json(new WorkflowState(node.getRoundNo(), "IN_PROGRESS")));
     workflow.setWorkflowRevision(workflow.getWorkflowRevision() + 1);
@@ -111,11 +113,87 @@ public class MultiRoundWorkflowService {
   public void completed(MultiRoundInterviewEntity interview) {
     MultiRoundWorkflowInstanceEntity workflow = workflowFor(interview);
     workflow.setStatus(MultiRoundWorkflowInstanceEntity.Status.COMPLETED);
+    workflow.setLeaseUntil(null);
     workflow.setCheckpointKey("WORKFLOW_COMPLETED");
     workflow.setStateJson(json(new WorkflowState(interview.getCurrentRoundNo(), "COMPLETED")));
     workflow.setWorkflowRevision(workflow.getWorkflowRevision() + 1);
     event(workflow, "WORKFLOW_COMPLETED", "workflow-completed:" + workflow.getWorkflowRevision(),
         workflow.getCheckpointKey(), workflow.getStateJson());
+  }
+
+  @Transactional
+  public void heartbeat(MultiRoundInterviewEntity interview) {
+    MultiRoundWorkflowInstanceEntity workflow = workflowFor(interview);
+    if (workflow.getStatus() == MultiRoundWorkflowInstanceEntity.Status.RUNNING) {
+      workflow.setLeaseUntil(java.time.LocalDateTime.now().plusMinutes(LEASE_MINUTES));
+    }
+  }
+
+  @Transactional
+  public int pauseExpiredLeases() {
+    int paused = 0;
+    for (MultiRoundWorkflowInstanceEntity workflow : workflowRepository.findByStatusAndLeaseUntilBefore(
+        MultiRoundWorkflowInstanceEntity.Status.RUNNING, java.time.LocalDateTime.now())) {
+      workflow.setStatus(MultiRoundWorkflowInstanceEntity.Status.PAUSED);
+      workflow.setLeaseUntil(null);
+      workflow.setWorkflowRevision(workflow.getWorkflowRevision() + 1);
+      event(workflow, "WORKFLOW_PAUSED", "workflow-paused:" + workflow.getWorkflowRevision(), workflow.getCheckpointKey(), "{}");
+      paused++;
+    }
+    return paused;
+  }
+
+  @Transactional
+  public boolean resume(MultiRoundInterviewEntity interview) {
+    MultiRoundWorkflowInstanceEntity workflow = workflowFor(interview);
+    if (workflow.getStatus() != MultiRoundWorkflowInstanceEntity.Status.PAUSED) return false;
+    boolean hasInProgress = roundRepository.findByInterviewIdOrderByRoundNoAsc(interview.getId()).stream()
+        .anyMatch(node -> node.getStatus() == MultiRoundEntity.Status.IN_PROGRESS);
+    workflow.setStatus(hasInProgress ? MultiRoundWorkflowInstanceEntity.Status.RUNNING : MultiRoundWorkflowInstanceEntity.Status.READY);
+    workflow.setLeaseUntil(hasInProgress ? java.time.LocalDateTime.now().plusMinutes(LEASE_MINUTES) : null);
+    workflow.setWorkflowRevision(workflow.getWorkflowRevision() + 1);
+    event(workflow, "WORKFLOW_RESUMED", "workflow-resumed:" + workflow.getWorkflowRevision(), workflow.getCheckpointKey(), "{}");
+    return true;
+  }
+
+  /** Replaces only an unstarted graph after an accepted, durable policy decision. */
+  @Transactional
+  public void replaceInitialDefinition(MultiRoundInterviewEntity interview, List<MultiRoundEntity> nodes,
+      MultiRoundInterviewEntity.OrchestrationMode mode, String source) {
+    MultiRoundWorkflowInstanceEntity workflow = workflowFor(interview);
+    List<MultiRoundEntity> ordered = nodes.stream()
+        .sorted(java.util.Comparator.comparingInt(MultiRoundEntity::getDisplayOrder)).toList();
+    workflow.setExecutionMode(mode);
+    workflow.setDefinitionVersion("dynamic-interview-v1");
+    workflow.setDefinitionJson(json(new StaticWorkflowDefinition(workflow.getDefinitionVersion(),
+        ordered.stream().map(this::nodeDefinition).toList())));
+    workflow.setCheckpointKey("NODE_" + ordered.getFirst().getNodeKey() + "_READY");
+    workflow.setStateJson(json(new WorkflowState(0, "ROUND_READY")));
+    workflow.setWorkflowRevision(workflow.getWorkflowRevision() + 1);
+    interview.setOrchestrationMode(mode);
+    event(workflow, "WORKFLOW_REDEFINED", "workflow-redefined:" + workflow.getWorkflowRevision(),
+        workflow.getCheckpointKey(), json(java.util.Map.of("source", source, "definition", workflow.getDefinitionJson())));
+  }
+
+  @Transactional
+  public void markInitialFallback(MultiRoundInterviewEntity interview, String reason) {
+    MultiRoundWorkflowInstanceEntity workflow = workflowFor(interview);
+    workflow.setExecutionMode(MultiRoundInterviewEntity.OrchestrationMode.STATIC_FALLBACK);
+    workflow.setWorkflowRevision(workflow.getWorkflowRevision() + 1);
+    interview.setOrchestrationMode(MultiRoundInterviewEntity.OrchestrationMode.STATIC_FALLBACK);
+    event(workflow, "INITIAL_ADK_FALLBACK", "initial-adk-fallback:" + workflow.getWorkflowRevision(),
+        workflow.getCheckpointKey(), json(java.util.Map.of("reason", reason == null ? "unknown" : reason)));
+  }
+
+  @Transactional
+  public void refreshDefinitionAfterMutation(MultiRoundInterviewEntity interview, List<MultiRoundEntity> nodes) {
+    MultiRoundWorkflowInstanceEntity workflow = workflowFor(interview);
+    workflow.setDefinitionJson(json(new StaticWorkflowDefinition(workflow.getDefinitionVersion(),
+        nodes.stream().sorted(java.util.Comparator.comparingInt(MultiRoundEntity::getDisplayOrder))
+            .map(this::nodeDefinition).toList())));
+    workflow.setWorkflowRevision(workflow.getWorkflowRevision() + 1);
+    event(workflow, "WORKFLOW_MUTATED", "workflow-mutated:" + workflow.getWorkflowRevision(),
+        workflow.getCheckpointKey(), workflow.getDefinitionJson());
   }
 
   private void applyStaticNodeMetadata(MultiRoundEntity round) {

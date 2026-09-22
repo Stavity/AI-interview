@@ -116,6 +116,14 @@ spring:
 
 # Application custom configuration
 app:
+  multiround:
+    agent:
+      # This branch implements ADK as the primary planning runtime. A per-interview static
+      # fallback remains mandatory when a provider, Tool or policy check fails.
+      runtime: ${APP_MULTIROUND_AGENT_RUNTIME:GOOGLE_ADK}
+      policy-version: ${APP_MULTIROUND_AGENT_POLICY_VERSION:workflow-v1}
+      max-tool-calls: ${APP_MULTIROUND_AGENT_MAX_TOOL_CALLS:5}
+      timeout-ms: ${APP_MULTIROUND_AGENT_TIMEOUT_MS:60000}
   tasks:
     consumer-enabled: ${TASK_CONSUMER_ENABLED:true}
     dispatcher-enabled: ${TASK_DISPATCHER_ENABLED:true}

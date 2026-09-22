@@ -151,6 +151,16 @@ public class LlmProviderRegistry {
     }
 
     /**
+     * Returns the minimal runtime configuration required by the ADK adapter.
+     * The adapter deliberately receives no repository access and cannot resolve
+     * credentials itself.
+     */
+    public OpenAiCompatibleProvider getOpenAiCompatibleProvider(String providerId) {
+        ProviderSnapshot provider = loadProviderOrThrow(resolveProviderId(providerId));
+        return new OpenAiCompatibleProvider(provider.baseUrl(), provider.apiKey(), provider.model());
+    }
+
+    /**
      * 清空缓存，重新加载所有 provider。
      */
     public void reload() {
@@ -483,5 +493,8 @@ public class LlmProviderRegistry {
         String rerankModel,
         Double temperature
     ) {
+    }
+
+    public record OpenAiCompatibleProvider(String baseUrl, String apiKey, String model) {
     }
 }

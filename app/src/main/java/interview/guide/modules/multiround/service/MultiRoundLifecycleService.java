@@ -135,7 +135,7 @@ public class MultiRoundLifecycleService {
     round.setCompletedAt(LocalDateTime.now());
     round.setReportJson(roundReportService.build(round, questions));
     MultiRoundInterviewEntity interview = round.getInterview();
-    if (round.getRoundType() == MultiRoundEntity.Type.HR) {
+    if (isTerminalNode(interview, round)) {
       interview.setStatus(MultiRoundInterviewEntity.Status.COMPLETED);
       interview.setCompletedAt(LocalDateTime.now());
     } else {
@@ -164,7 +164,11 @@ public class MultiRoundLifecycleService {
     if (currentRound.getStatus() != MultiRoundEntity.Status.COMPLETED) {
       throw new BusinessException(ErrorCode.ROUND_STATE_INVALID, "当前轮次尚未完成，不能进入下一轮");
     }
-    if (currentRound.getRoundType() == MultiRoundEntity.Type.HR) {
+    MultiRoundEntity next = rounds.stream()
+        .filter(r -> r.getRoundNo() == interview.getCurrentRoundNo() + 1)
+        .findFirst()
+        .orElse(null);
+    if (next == null) {
       interview.setStatus(MultiRoundInterviewEntity.Status.COMPLETED);
       interviewRepository.save(interview);
       workflowService.completed(interview);
@@ -172,12 +176,13 @@ public class MultiRoundLifecycleService {
     }
     interview.setStatus(MultiRoundInterviewEntity.Status.ROUND_READY);
     interviewRepository.save(interview);
-    MultiRoundEntity next = rounds.stream()
-        .filter(r -> r.getRoundNo() == interview.getCurrentRoundNo() + 1)
-        .findFirst()
-        .orElse(null);
-    if (next != null) workflowService.nextNodeReady(interview, next);
+    workflowService.nextNodeReady(interview, next);
     return next;
+  }
+
+  private boolean isTerminalNode(MultiRoundInterviewEntity interview, MultiRoundEntity round) {
+    return roundRepository.findByInterviewIdOrderByRoundNoAsc(interview.getId()).stream()
+        .noneMatch(candidate -> candidate.getRoundNo() > round.getRoundNo());
   }
 
   private MultiRoundEntity getRound(Long roundId) {

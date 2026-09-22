@@ -155,6 +155,7 @@ class MultiRoundLifecycleServiceTest {
   @Test @DisplayName("题目全部答完后才能显式结束轮次")
   void shouldFinishRoundAfterAllQuestionsAnswered() {
     MultiRoundInterviewEntity interview = new MultiRoundInterviewEntity();
+    interview.setId(2L);
     MultiRoundEntity round = new MultiRoundEntity();
     round.setInterview(interview); round.setRoundNo(2); round.setQuestionLimit(1);
     round.setStatus(MultiRoundEntity.Status.IN_PROGRESS);
@@ -162,6 +163,8 @@ class MultiRoundLifecycleServiceTest {
     question.setStatus(MultiRoundQuestionEntity.Status.ANSWERED);
     when(roundRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(round));
     when(questionRepository.findByRoundIdOrderBySequenceNoAsc(2L)).thenReturn(List.of(question));
+    MultiRoundEntity next = new MultiRoundEntity(); next.setRoundNo(3);
+    when(roundRepository.findByInterviewIdOrderByRoundNoAsc(2L)).thenReturn(List.of(round, next));
     when(roundRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(roundReportService.build(round, List.of(question))).thenReturn("{\"answeredQuestionCount\":1}");
 
@@ -204,17 +207,19 @@ class MultiRoundLifecycleServiceTest {
     verify(planningContextFactory, never()).create(any(), any());
   }
 
-  @Test @DisplayName("HR 轮结束后整场面试标记完成")
-  void shouldCompleteInterviewAfterHrRound() {
+  @Test @DisplayName("末节点结束后整场面试标记完成，不依赖节点是否为 HR")
+  void shouldCompleteInterviewAfterTerminalNode() {
     MultiRoundInterviewEntity interview = new MultiRoundInterviewEntity();
+    interview.setId(4L);
     MultiRoundEntity round = new MultiRoundEntity();
     round.setInterview(interview); round.setRoundNo(4); round.setQuestionLimit(1);
-    round.setRoundType(MultiRoundEntity.Type.HR);
+    round.setRoundType(MultiRoundEntity.Type.TECHNICAL_2);
     round.setStatus(MultiRoundEntity.Status.IN_PROGRESS);
     MultiRoundQuestionEntity question = new MultiRoundQuestionEntity();
     question.setStatus(MultiRoundQuestionEntity.Status.ANSWERED);
     when(roundRepository.findByIdForUpdate(4L)).thenReturn(Optional.of(round));
     when(questionRepository.findByRoundIdOrderBySequenceNoAsc(4L)).thenReturn(List.of(question));
+    when(roundRepository.findByInterviewIdOrderByRoundNoAsc(4L)).thenReturn(List.of(round));
     when(roundRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(roundReportService.build(any(), any())).thenReturn("{}");
 

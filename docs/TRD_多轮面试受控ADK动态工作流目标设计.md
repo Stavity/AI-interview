@@ -629,4 +629,24 @@ HTTP `Idempotency-Key` 不能替代领域唯一约束；消息重投、后台恢
 
 随后已接入服务端自动推进：新建/恢复到首节点的会话会自动出题；普通题全部完成或算法题静态评审成功后，系统以稳定的内部幂等键自动完成当前节点、进入下一节点并准备题目。旧 `startRound` / `finishRound` / `nextRound` 接口暂时保留为兼容与恢复入口，前端移除前需补齐后台恢复调度与节点准备状态展示。
 
-尚未接入 ADK；下一阶段为 P2 Shadow POC，必须先验证当前 Java/Spring/Provider 与 ADK Adapter 的兼容性，再允许任何 ADK 输出影响 workflow。
+### 2026-09-22：P2 受控 Google ADK 初始图主路径已完成
+
+本分支按已确认的目标取消 Shadow，默认直接走 `GOOGLE_ADK`，但保留单场会话级 `STATIC_FALLBACK`：
+
+- 引入 Google ADK Java Adapter，运行固定的 `EvidenceAgent → StrategyAgent → RootAgent` 顺序链路；三个 Agent 均禁止横向/向父 Agent 转移；
+- Tool 仅绑定已截断的内存上下文，不能访问 Repository、网络、其他 session 或写入领域状态，并有全链路 Tool 调用上限；
+- Root 在首节点开始前输出 `InitialWorkflowDecision`；`WorkflowPolicyGate` 强制节点数、算法节点、HR 末位、题量、难度、coverage 和 key 约束；
+- `V20260924__add_multi_round_workflow_decisions.sql` 持久化每一份接受/拒绝的提案（含 input hash、policy version、拒绝原因和 JSON），只有被接受的决策会替换未开始的静态节点；
+- 模型超时、Provider 不兼容、结构化输出异常或 Gate 拒绝都会写入事件并固定为 `STATIC_FALLBACK`，随后正常自动出题，不把异常暴露给候选人；
+- 生命周期的终止条件改为真实最后节点而不是固定 `HR`，因此动态图可安全地省略 HR 或使用任意合法技术节点组合；
+- 已通过 ADK 依赖编译、全量后端测试、policy gate、schema drift、workflow 和 lifecycle 回归。
+
+下一实施块是 checkpoint mutation：由同一 Gate 只修改 `PENDING` 节点，并为每次 mutation 追加独立决策与 revision 约束；已开始、已完成节点和历史审计一律不可改写。
+
+### 2026-09-22：P3 checkpoint mutation 与最终学习建议投影已完成
+
+- 每个节点完成后、下一个节点出题前，Root 可提出绑定当前 workflow revision 的未来节点补丁；只允许修改 `PENDING` 节点的题量、难度与能力覆盖，节点身份、顺序、类型和已开始节点绝不改变；
+- mutation 复用 ADK 三 Agent 链路、Policy Gate、decision journal 与 workflow revision；模型错误、超时、版本冲突或 Gate 拒绝均保留当前未来图并继续自动推进；
+- 最后节点完成后，Root 输出 `FinalLearningAdvice` 并持久化为 `multi_round_learning_advice` 投影；Provider/ADK 不可用时保存确定性建议；
+- 建议投影不会直接更新 `learning_progress`、创建学习计划或安排提醒，学习域仍是唯一的掌握度和任务写入方；报告 API 返回建议来源与 JSON，支持刷新恢复；
+- 已完成后端编译与聚焦回归；完整测试套件曾出现一次既有 `AsyncTaskPersistenceTest` 空指针，隔离重跑与受影响模块测试均通过，仍建议在 CI 中进一步处理该测试的隔离问题。

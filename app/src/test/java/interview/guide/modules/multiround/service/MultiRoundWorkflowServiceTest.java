@@ -73,6 +73,22 @@ class MultiRoundWorkflowServiceTest {
     verify(eventRepository).save(any(MultiRoundWorkflowEventEntity.class));
   }
 
+  @Test
+  @DisplayName("过期运行租约会暂停 workflow 并留下恢复审计事件")
+  void shouldPauseExpiredLease() {
+    var workflow = new interview.guide.modules.multiround.model.MultiRoundWorkflowInstanceEntity();
+    workflow.setWorkflowRevision(4);
+    workflow.setCheckpointKey("NODE_java_READY");
+    when(workflowRepository.findByStatusAndLeaseUntilBefore(
+        org.mockito.ArgumentMatchers.eq(interview.guide.modules.multiround.model.MultiRoundWorkflowInstanceEntity.Status.RUNNING), any()))
+        .thenReturn(List.of(workflow));
+
+    assertThat(service().pauseExpiredLeases()).isEqualTo(1);
+    assertThat(workflow.getStatus()).isEqualTo(interview.guide.modules.multiround.model.MultiRoundWorkflowInstanceEntity.Status.PAUSED);
+    assertThat(workflow.getLeaseUntil()).isNull();
+    verify(eventRepository).save(any(MultiRoundWorkflowEventEntity.class));
+  }
+
   private MultiRoundEntity node(MultiRoundInterviewEntity interview, int roundNo, MultiRoundEntity.Type type) {
     MultiRoundEntity node = new MultiRoundEntity();
     node.setInterview(interview);

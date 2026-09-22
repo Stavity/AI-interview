@@ -6,7 +6,7 @@ export interface AlgorithmSubmission { id: number; questionId: number; language:
 export interface AlgorithmStaticReview { score: number; approach: string; timeComplexity: string; spaceComplexity: string; boundaryCases: string[]; qualityIssues: string[]; improvements: string[]; notice: string; }
 export interface MultiRoundInterview { id: number; status: string; currentRoundNo: number; providerId: string; }
 export interface MultiRoundDetail { interview: MultiRoundInterview; rounds: Array<{ id: number; roundNo: number; roundType: string; status: string; questionLimit: number }>; }
-export interface MultiRoundReport { status: string; completedRounds: number; totalRounds: number; summary: string; source: string; rounds: Array<{ roundNo: number; roundType: string; questionCount: number; answeredQuestionCount: number; questionTypes: Record<string, number> }>; }
+export interface MultiRoundReport { status: string; completedRounds: number; totalRounds: number; summary: string; source: string; rounds: Array<{ roundNo: number; roundType: string; questionCount: number; answeredQuestionCount: number; questionTypes: Record<string, number> }>; advice?: { source: 'GOOGLE_ADK' | 'DETERMINISTIC'; adviceJson: string } | null; }
 export interface MultiRoundQuestion { id: number; sequenceNo: number; questionType: string; categoryKey?: string; question: string; status: string; answer?: string; }
 export interface MultiRoundRound { id: number; roundNo: number; roundType: string; status: string; questionLimit: number; }
 export interface MultiRoundWorkflowNode { id: number; nodeKey: string; nodeType: string; displayOrder: number; status: string; questionLimit: number; origin: 'STATIC' | 'ADK' | 'FALLBACK'; }
@@ -25,6 +25,7 @@ export const multiRoundApi = {
   getActiveForResume: (resumeId: number) => request.get<MultiRoundBootstrapResponse | null>(`/api/resumes/${resumeId}/multi-round-interviews/active`),
   getInterview: (sessionId: string) => request.get<MultiRoundDetail>(`/api/multi-round/interviews/${sessionId}`),
   getWorkflow: (sessionId: string) => request.get<MultiRoundWorkflow>(`/api/multi-round/interviews/${sessionId}/workflow`),
+  recoverWorkflow: (sessionId: string) => request.post<MultiRoundWorkflow>(`/api/multi-round/interviews/${sessionId}/recover`),
   listQuestions: (roundId: number) => request.get<MultiRoundQuestion[]>(`/api/multi-round/rounds/${roundId}/questions`),
   startRound: (roundId: number, idempotencyKey: string) => request.post<MultiRoundRound>(`/api/multi-round/rounds/${roundId}/start`, undefined, withIdempotencyKey(idempotencyKey)),
   finishRound: (roundId: number, idempotencyKey: string) => request.post<MultiRoundRound>(`/api/multi-round/rounds/${roundId}/finish`, undefined, withIdempotencyKey(idempotencyKey)),

@@ -26,11 +26,18 @@ public class AsyncTaskSubmissionService {
                 interview.guide.common.exception.ErrorCode.BAD_REQUEST, "任务正在处理中，请勿重复提交");
         }
         var task = new AsyncTaskEntity();
-        task.setId(id); task.setTaskType(type); task.setBusinessId(businessId); task.setActiveKey(key);
-        task.setState(AsyncTaskState.QUEUED); task.setInputPayload(mapper.writeValueAsString(input));
+        task.setId(id);
+        task.setTaskType(type);
+        task.setBusinessId(businessId);
+        task.setActiveKey(key);
+        task.setState(AsyncTaskState.QUEUED);
+        task.setInputPayload(mapper.writeValueAsString(input));
         task.setMaxAttempts(properties.getMaxAttempts());
-        task.setNextRunAt(Instant.now()); task.setCreatedAt(Instant.now()); task.setUpdatedAt(Instant.now());
-        tasks.saveAndFlush(task); outbox.enqueue(task, task.getNextRunAt(), false);
+        task.setNextRunAt(Instant.now());
+        task.setCreatedAt(Instant.now());
+        task.setUpdatedAt(Instant.now());
+        tasks.saveAndFlush(task);
+        outbox.enqueue(task, task.getNextRunAt(), false);
         return id;
     }
 }

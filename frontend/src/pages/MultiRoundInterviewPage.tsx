@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertCircle, ChevronRight, Clock, Loader2, Play, Square } from 'lucide-react';
+import { AlertCircle, ChevronRight, Clock, Loader2 } from 'lucide-react';
 import { multiRoundApi, type AgentRunTrace, type MultiRoundDetail, type MultiRoundQuestion, type MultiRoundReport, type MultiRoundWorkflow } from '../api/multiRound';
 import { learningApi, type InterviewRecommendationPreview } from '../api/learning';
 
@@ -19,6 +19,19 @@ const ROUND_COLORS: Record<string, string> = {
   TECHNICAL_2: 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20',
   HR: 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20',
 };
+
+function FinalAdvice({ advice }: { advice: NonNullable<MultiRoundReport['advice']> }) {
+  let value: { summary?: string; recommendations?: string[] } = {};
+  try { value = JSON.parse(advice.adviceJson) as typeof value; } catch { return null; }
+  if (!value.summary && !(value.recommendations?.length)) return null;
+  return (
+    <div className="mt-4 rounded-lg bg-primary-50 p-3 text-xs text-primary-900 dark:bg-primary-900/20 dark:text-primary-100">
+      <p className="font-medium">个性化学习建议 <span className="font-normal opacity-70">· {advice.source}</span></p>
+      {value.summary && <p className="mt-1">{value.summary}</p>}
+      {value.recommendations?.length ? <ul className="mt-2 list-disc space-y-1 pl-4">{value.recommendations.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul> : null}
+    </div>
+  );
+}
 
 export default function MultiRoundInterviewPage() {
   const [params] = useSearchParams();
@@ -116,49 +129,14 @@ export default function MultiRoundInterviewPage() {
     }
   };
 
-  const startRound = async (id: number) => {
+  const recoverWorkflow = async () => {
     if (busy) return;
-    setError('');
-    setBusy(`start:${id}`);
-    try {
-      await multiRoundApi.startRound(id, `round-start:${id}:${crypto.randomUUID()}`);
-      await reloadInterview(activeSessionId);
-    } catch {
-      if (mounted.current) setError('轮次启动失败');
-    } finally {
-      if (mounted.current) setBusy(null);
-    }
+    setBusy('recover'); setError('');
+    try { await multiRoundApi.recoverWorkflow(activeSessionId); await reloadInterview(activeSessionId); }
+    catch { if (mounted.current) setError('恢复面试流程失败，请稍后重试'); }
+    finally { if (mounted.current) setBusy(null); }
   };
 
-  /**
-   * 结束本轮后进入下一轮。
-   * 两步分开处理：原实现把 finish 与 nextRound 串在同一个 try 里，
-   * finish 成功而 nextRound 失败时会提示「当前轮次尚不能结束」（与事实相反）且跳过 reload，
-   * 界面仍显示进行中，用户只能刷新页面才能恢复。
-   */
-  const finishRound = async (id: number) => {
-    if (busy) return;
-    setError('');
-    setBusy(`finish:${id}`);
-    let finished = false;
-    try {
-      await multiRoundApi.finishRound(id, `round-finish:${id}:${crypto.randomUUID()}`);
-      finished = true;
-      await multiRoundApi.nextRound(activeSessionId, `next-round:${id}:${crypto.randomUUID()}`);
-    } catch {
-      if (mounted.current) {
-        setError(finished ? '本轮已结束，但进入下一轮失败，请重试' : '当前轮次尚不能结束');
-      }
-    } finally {
-      // 无论哪一步失败都刷新，保证界面与服务端状态一致
-      try {
-        await reloadInterview(activeSessionId);
-      } catch {
-        if (mounted.current) setError('状态刷新失败，请重新加载页面');
-      }
-      if (mounted.current) setBusy(null);
-    }
-  };
 
   const selectRound = async (roundId: number) => {
     setError('');
@@ -220,6 +198,7 @@ export default function MultiRoundInterviewPage() {
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-slate-900 dark:text-white">面试进度</p>
               <span className="text-xs text-slate-500">{workflow ? `流程 v${workflow.workflowRevision} · ${workflow.executionMode}` : `当前第 ${interview.interview.currentRoundNo} 轮`} · {interview.interview.status}</span>
+              {workflow?.status === 'PAUSED' && <button type="button" disabled={busy !== null} onClick={recoverWorkflow} className="rounded-md border border-primary-300 px-2 py-1 text-xs text-primary-700 disabled:opacity-50 dark:border-primary-700 dark:text-primary-300">{busy === 'recover' ? '恢复中…' : '继续面试'}</button>}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(workflow?.nodes ?? interview.rounds.map(round => ({ ...round, nodeKey: `legacy-round-${round.id}`, nodeType: round.roundType, displayOrder: round.roundNo, origin: 'STATIC' as const })))
@@ -241,28 +220,7 @@ export default function MultiRoundInterviewPage() {
                     {round.status === 'IN_PROGRESS' && <Clock className="w-3 h-3 text-primary-600" />}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">{round.status} · 最多 {round.questionLimit} 题</p>
-                  {round.status === 'PENDING' && activeRoundId === round.id && (
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={e => { e.stopPropagation(); startRound(round.id); }}
-                      className="mt-2 flex items-center gap-1 rounded-md bg-primary-600 px-2 py-1 text-xs text-white disabled:opacity-50"
-                    >
-                      {busy === `start:${round.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-                      {busy === `start:${round.id}` ? '启动中' : '启动本轮'}
-                    </button>
-                  )}
-                  {round.status === 'IN_PROGRESS' && (
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={e => { e.stopPropagation(); finishRound(round.id); }}
-                      className="mt-2 flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-slate-600"
-                    >
-                      {busy === `finish:${round.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
-                      {busy === `finish:${round.id}` ? '结束中' : '结束本轮'}
-                    </button>
-                  )}
+                  {round.status === 'PENDING' && <p className="mt-2 text-xs text-slate-500">系统正在准备本节点题目</p>}
                 </div>
               ))}
             </div>
@@ -339,6 +297,7 @@ export default function MultiRoundInterviewPage() {
                   ))}
                 </div>
               )}
+              {report.advice && <FinalAdvice advice={report.advice} />}
               <button
                 type="button"
                 disabled={busy !== null}

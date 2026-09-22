@@ -39,6 +39,7 @@ class MultiRoundInterviewBootstrapServiceTest {
   @Mock private MultiRoundInterviewRepository interviewRepository;
   @Mock private MultiRoundBootstrapPersistenceService persistenceService;
   @Mock private RedisService redisService;
+  @Mock private MultiRoundWorkflowInitializationService workflowInitializationService;
   @Mock private MultiRoundAutomaticStartService automaticStartService;
 
   @BeforeEach
@@ -50,7 +51,7 @@ class MultiRoundInterviewBootstrapServiceTest {
   private MultiRoundInterviewBootstrapService service() {
     return new MultiRoundInterviewBootstrapService(
         resumeRepository, analysisRepository, interviewRepository, persistenceService, redisService,
-        automaticStartService);
+        workflowInitializationService, automaticStartService);
   }
 
   private StartMultiRoundInterviewRequest request(String jd) {

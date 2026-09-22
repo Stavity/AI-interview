@@ -33,6 +33,7 @@ public class MultiRoundInterviewBootstrapService {
   private final MultiRoundInterviewRepository interviewRepository;
   private final MultiRoundBootstrapPersistenceService persistenceService;
   private final RedisService redisService;
+  private final MultiRoundWorkflowInitializationService workflowInitializationService;
   private final MultiRoundAutomaticStartService automaticStartService;
 
   private static final List<MultiRoundInterviewEntity.Status> ACTIVE_STATUSES = List.of(
@@ -90,6 +91,7 @@ public class MultiRoundInterviewBootstrapService {
             MultiRoundInterviewEntity created = persistenceService.create(
                 resumeId, request.skillId(), request.difficulty(), idempotencyKey,
                 normalizedJd, scopeFingerprint, snapshot, sha256(snapshot));
+            workflowInitializationService.initializeNewInterview(created);
             automaticStartService.ensureFirstNodeStarted(created);
             return response(created, false);
           } catch (DataIntegrityViolationException conflict) {

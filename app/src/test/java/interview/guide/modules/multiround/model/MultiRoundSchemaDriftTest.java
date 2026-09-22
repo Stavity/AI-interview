@@ -83,7 +83,18 @@ class MultiRoundSchemaDriftTest {
       "multi_round_workflow_events", Map.of(
           "event_key", 160,
           "event_type", 64,
-          "checkpoint_key", 96));
+          "checkpoint_key", 96),
+      "multi_round_workflow_decisions", Map.of(
+          "decision_key", 160,
+          "decision_type", 48,
+          "agent_name", 64,
+          "policy_version", 64,
+          "input_hash", 64,
+          "status", 16,
+          "rejection_reason", 128),
+      "multi_round_learning_advice", Map.of(
+          "source", 32,
+          "input_hash", 64));
 
   @Test
   @DisplayName("实体 @Column(length) 必须与迁移 DDL 的 VARCHAR(n) 完全一致")

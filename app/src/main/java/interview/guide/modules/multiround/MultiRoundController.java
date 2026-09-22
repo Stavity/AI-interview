@@ -48,6 +48,7 @@ public class MultiRoundController {
   private final AgentRunTraceService traceService;
   private final AlgorithmSubmissionReviewService algorithmReviewService;
   private final interview.guide.modules.multiround.service.MultiRoundWorkflowService workflowService;
+  private final interview.guide.modules.multiround.service.MultiRoundAutomaticStartService automaticStartService;
 
   @GetMapping("/interviews/{sessionId}")
   public Result<InterviewDetailResponse> getInterview(@PathVariable String sessionId) {
@@ -59,6 +60,13 @@ public class MultiRoundController {
       @PathVariable String sessionId) {
     return Result.success(workflowService.view(interviewService.getBySessionId(sessionId)));
   }
+  @PostMapping("/interviews/{sessionId}/recover")
+  public Result<interview.guide.modules.multiround.service.MultiRoundWorkflowService.WorkflowView> recover(
+      @PathVariable String sessionId) {
+    MultiRoundInterviewEntity interview = interviewService.getBySessionId(sessionId);
+    if (workflowService.resume(interview)) automaticStartService.ensureNextPendingNodeStarted(interview);
+    return Result.success(workflowService.view(interview));
+  }
   @PostMapping("/interviews/{sessionId}/agent-plan") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<AgentPlanResponse> agentPlan(@PathVariable String sessionId, @Valid @RequestBody AgentPlanRequest request) {
     MultiRoundInterviewEntity interview = interviewService.getBySessionId(sessionId);
@@ -69,7 +77,7 @@ public class MultiRoundController {
   @GetMapping("/interviews/{sessionId}/report")
   public Result<ReportResponse> report(@PathVariable String sessionId) {
     MultiRoundReportService.Report report = reportService.report(interviewService.getBySessionId(sessionId));
-    return Result.success(new ReportResponse(report.status(), report.completedRounds(), report.totalRounds(), report.summary(), report.source(), report.rounds()));
+    return Result.success(new ReportResponse(report.status(), report.completedRounds(), report.totalRounds(), report.summary(), report.source(), report.rounds(), report.advice()));
   }
   @GetMapping("/interviews/{sessionId}/agent-trace")
   public Result<List<AgentTraceResponse>> agentTrace(@PathVariable String sessionId) {
@@ -142,7 +150,7 @@ public class MultiRoundController {
   public record AgentPlanRequest(@NotBlank String trigger, @NotBlank @Size(max = 12000) String context) {}
   public record AgentPlanResponse(int roundNo, String roundType, int followUpCount, List<String> categoryKeys, int stepCount) {}
   public record ReportResponse(String status, int completedRounds, int totalRounds, String summary, String source,
-                               List<MultiRoundRoundReportService.RoundReport> rounds) {}
+                               List<MultiRoundRoundReportService.RoundReport> rounds, MultiRoundReportService.Advice advice) {}
   public record AgentTraceStepResponse(int stepNo, String toolName, String status, String outputSummary, Long durationMs, java.time.LocalDateTime createdAt) { static AgentTraceStepResponse from(AgentRunTraceService.StepTrace value) { return new AgentTraceStepResponse(value.stepNo(), value.toolName(), value.status(), value.outputSummary(), value.durationMs(), value.createdAt()); } }
   public record AgentTraceResponse(Long id, String triggerType, String status, String errorCode, java.time.LocalDateTime startedAt, java.time.LocalDateTime finishedAt, List<AgentTraceStepResponse> steps) { static AgentTraceResponse from(AgentRunTraceService.RunTrace value) { return new AgentTraceResponse(value.id(), value.triggerType(), value.status(), value.errorCode(), value.startedAt(), value.finishedAt(), value.steps().stream().map(AgentTraceStepResponse::from).toList()); } }
   public record SubmissionResponse(Long id, Long questionId, String language, String templateVersion, String evaluationStatus, String evaluationErrorCode, String evaluation, String notice) {

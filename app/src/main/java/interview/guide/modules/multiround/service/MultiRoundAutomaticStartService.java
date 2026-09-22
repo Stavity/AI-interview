@@ -16,9 +16,13 @@ public class MultiRoundAutomaticStartService {
   private final MultiRoundOperationService operationService;
 
   public void ensureFirstNodeStarted(MultiRoundInterviewEntity interview) {
-    if (interview.getStatus() != MultiRoundInterviewEntity.Status.ROUND_READY
-        || interview.getCurrentRoundNo() != 0) return;
+    ensureNextPendingNodeStarted(interview);
+  }
+
+  public void ensureNextPendingNodeStarted(MultiRoundInterviewEntity interview) {
+    if (interview.getStatus() != MultiRoundInterviewEntity.Status.ROUND_READY) return;
     roundRepository.findByInterviewIdOrderByRoundNoAsc(interview.getId()).stream()
+        .filter(round -> round.getRoundNo() == interview.getCurrentRoundNo() + 1)
         .filter(round -> round.getStatus() == MultiRoundEntity.Status.PENDING)
         .findFirst()
         .ifPresent(round -> start(interview, round));

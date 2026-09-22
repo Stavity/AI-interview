@@ -47,6 +47,9 @@ class MultiRoundOperationServiceTest {
   @Mock private MultiRoundInterviewService interviewService;
   @Mock private MultiRoundQuestionGenerationService questionGenerationService;
   @Mock private InterviewAgentOrchestrator agentOrchestrator;
+  @Mock private MultiRoundCheckpointMutationService checkpointMutationService;
+  @Mock private MultiRoundLearningAdviceService learningAdviceService;
+  @Mock private MultiRoundWorkflowService workflowService;
   @Mock private RedisService redisService;
 
   @BeforeEach
@@ -59,7 +62,7 @@ class MultiRoundOperationServiceTest {
   private MultiRoundOperationService service() {
     return new MultiRoundOperationService(roundRepository, questionRepository, submissionRepository,
         idempotencyService, lifecycleService, interviewService, questionService, submissionService,
-        questionGenerationService, agentOrchestrator, redisService, new ObjectMapper());
+        questionGenerationService, agentOrchestrator, checkpointMutationService, learningAdviceService, workflowService, redisService, new ObjectMapper());
   }
 
   private MultiRoundQuestionEntity boundQuestion(String sessionId) {

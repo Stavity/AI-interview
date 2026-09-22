@@ -3,6 +3,8 @@ package interview.guide.common.ai.agent;
 import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.ai.PromptSanitizer;
 import interview.guide.common.ai.StructuredOutputInvoker;
+import interview.guide.common.ai.adk.AdkInterviewPlanner;
+import interview.guide.common.ai.adk.AgentRuntimeProperties;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.multiround.model.MultiRoundInterviewEntity;
 import interview.guide.modules.multiround.service.AgentRunAuditService;
@@ -19,9 +21,35 @@ public class InterviewAgentOrchestrator {
   private final AgentPlanValidator validator; private final AgentRunAuditService auditService;
   private final AgentRunStepAuditService stepAuditService;
   private final PromptSanitizer promptSanitizer;
+  private final AdkInterviewPlanner adkInterviewPlanner;
+  private final AgentRuntimeProperties runtimeProperties;
 
   public InterviewPlan plan(MultiRoundInterviewEntity interview, String trigger, InterviewPlanningContext context) {
+    if (runtimeProperties.getRuntime() == AgentRuntimeProperties.Runtime.GOOGLE_ADK) {
+      return planWithAdk(interview, trigger, context);
+    }
     return plan(interview, trigger, context.asPrompt());
+  }
+
+  private InterviewPlan planWithAdk(MultiRoundInterviewEntity interview, String trigger, InterviewPlanningContext context) {
+    AgentBudget budget = AgentBudget.DEFAULT;
+    String safeContext = boundedContext(context.asPrompt(), budget);
+    var audit = auditService.start(interview, trigger, safeContext);
+    long startedAt = System.nanoTime();
+    try {
+      InterviewPlan plan = adkInterviewPlanner.plan(interview, context);
+      budget.validateOutputLength(plan.toString());
+      validator.validate(plan, budget);
+      stepAuditService.record(audit, 1, "ADK_ROOT_WORKFLOW", "runtime=GOOGLE_ADK",
+          "round=" + plan.roundNo() + ",type=" + plan.roundType(), elapsedMs(startedAt), "SUCCEEDED");
+      auditService.succeeded(audit, "GOOGLE_ADK");
+      return plan;
+    } catch (Exception error) {
+      stepAuditService.record(audit, 1, "ADK_ROOT_WORKFLOW", "runtime=GOOGLE_ADK", "fallback",
+          elapsedMs(startedAt), "FAILED");
+      auditService.failed(audit, error instanceof java.util.concurrent.TimeoutException ? "ADK_TIMEOUT" : "ADK_FALLBACK");
+      return fallback(interview);
+    }
   }
 
   public InterviewPlan plan(MultiRoundInterviewEntity interview, String trigger, String context) {

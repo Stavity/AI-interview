@@ -47,11 +47,17 @@ public class MultiRoundController {
   private final MultiRoundReportService reportService;
   private final AgentRunTraceService traceService;
   private final AlgorithmSubmissionReviewService algorithmReviewService;
+  private final interview.guide.modules.multiround.service.MultiRoundWorkflowService workflowService;
 
   @GetMapping("/interviews/{sessionId}")
   public Result<InterviewDetailResponse> getInterview(@PathVariable String sessionId) {
     MultiRoundInterviewEntity interview = interviewService.getBySessionId(sessionId);
     return Result.success(new InterviewDetailResponse(InterviewResponse.from(interview), roundRepository.findByInterviewIdOrderByRoundNoAsc(interview.getId()).stream().map(round -> new RoundResponse(round.getId(), round.getRoundNo(), round.getRoundType().name(), round.getStatus().name(), round.getQuestionLimit())).toList()));
+  }
+  @GetMapping("/interviews/{sessionId}/workflow")
+  public Result<interview.guide.modules.multiround.service.MultiRoundWorkflowService.WorkflowView> workflow(
+      @PathVariable String sessionId) {
+    return Result.success(workflowService.view(interviewService.getBySessionId(sessionId)));
   }
   @PostMapping("/interviews/{sessionId}/agent-plan") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<AgentPlanResponse> agentPlan(@PathVariable String sessionId, @Valid @RequestBody AgentPlanRequest request) {
@@ -111,8 +117,11 @@ public class MultiRoundController {
   }
   @PostMapping("/algorithm-submissions/{submissionId}/review") @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Result<StaticReviewResponse> reviewAlgorithm(@PathVariable Long submissionId) {
-    operationService.requireResumeBound(submissionService.get(submissionId).getQuestion().getRound().getInterview());
-    return Result.success(StaticReviewResponse.from(algorithmReviewService.review(submissionId)));
+    AlgorithmSubmissionEntity submission = submissionService.get(submissionId);
+    operationService.requireResumeBound(submission.getQuestion().getRound().getInterview());
+    StaticReviewResponse response = StaticReviewResponse.from(algorithmReviewService.review(submissionId));
+    operationService.progressAfterCandidateAction(submission.getQuestion().getRound().getId());
+    return Result.success(response);
   }
 
   // 请求体上限与服务层校验对齐，避免超大载荷先被完整反序列化进内存再被拒

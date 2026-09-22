@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, ChevronRight, Clock, Loader2, Play, Square } from 'lucide-react';
-import { multiRoundApi, type AgentRunTrace, type MultiRoundDetail, type MultiRoundQuestion, type MultiRoundReport } from '../api/multiRound';
+import { multiRoundApi, type AgentRunTrace, type MultiRoundDetail, type MultiRoundQuestion, type MultiRoundReport, type MultiRoundWorkflow } from '../api/multiRound';
 import { learningApi, type InterviewRecommendationPreview } from '../api/learning';
 
 const AlgorithmEditor = lazy(() => import('../components/multiround/AlgorithmEditor'));
@@ -35,6 +35,7 @@ export default function MultiRoundInterviewPage() {
   // 正在进行中的操作标识，用于禁用按钮防重复提交
   const [busy, setBusy] = useState<string | null>(null);
   const [interview, setInterview] = useState<MultiRoundDetail | null>(null);
+  const [workflow, setWorkflow] = useState<MultiRoundWorkflow | null>(null);
   const [report, setReport] = useState<MultiRoundReport | null>(null);
   const [traces, setTraces] = useState<AgentRunTrace[]>([]);
   const [learningPreview, setLearningPreview] = useState<InterviewRecommendationPreview | null>(null);
@@ -56,17 +57,21 @@ export default function MultiRoundInterviewPage() {
 
   const reloadInterview = async (sid: string) => {
     const seq = ++viewSeq.current;
-    const [detail, value, trace] = await Promise.all([
+    const [detail, value, trace, workflowView] = await Promise.all([
       multiRoundApi.getInterview(sid),
       multiRoundApi.getReport(sid),
       multiRoundApi.getAgentTrace(sid),
+      multiRoundApi.getWorkflow(sid),
     ]);
     if (seq !== viewSeq.current || !mounted.current) return;
     setInterview(detail);
+    setWorkflow(workflowView);
     setReport(value);
     setTraces(trace);
 
-    const currentRound = detail.rounds.find(r => r.status === 'IN_PROGRESS');
+    const currentNode = workflowView.nodes.find(node => node.status === 'IN_PROGRESS')
+      ?? workflowView.nodes.find(node => node.status === 'PENDING');
+    const currentRound = currentNode ? detail.rounds.find(round => round.id === currentNode.id) : undefined;
     if (currentRound) {
       const qs = await multiRoundApi.listQuestions(currentRound.id);
       if (seq !== viewSeq.current || !mounted.current) return;
@@ -74,8 +79,7 @@ export default function MultiRoundInterviewPage() {
       setQuestions(qs);
       return;
     }
-    const nextRound = detail.rounds.find(r => r.status === 'PENDING' && r.roundNo === detail.interview.currentRoundNo + 1);
-    setActiveRoundId(nextRound ? nextRound.id : null);
+    setActiveRoundId(currentNode?.id ?? null);
     setQuestions([]);
   };
 
@@ -103,8 +107,8 @@ export default function MultiRoundInterviewPage() {
     try {
       await multiRoundApi.answerQuestion(question.id, key, draft);
       if (!mounted.current) return;
-      setQuestions(prev => prev.map(q => q.id === question.id ? { ...q, answer: draft, status: 'ANSWERED' } : q));
       setAnswers(prev => { const next = { ...prev }; delete next[question.id]; return next; });
+      await reloadInterview(activeSessionId);
     } catch {
       if (mounted.current) setError('提交回答失败');
     } finally {
@@ -215,10 +219,13 @@ export default function MultiRoundInterviewPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-slate-900 dark:text-white">面试进度</p>
-              <span className="text-xs text-slate-500">当前第 {interview.interview.currentRoundNo} 轮 · {interview.interview.status}</span>
+              <span className="text-xs text-slate-500">{workflow ? `流程 v${workflow.workflowRevision} · ${workflow.executionMode}` : `当前第 ${interview.interview.currentRoundNo} 轮`} · {interview.interview.status}</span>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {interview.rounds.map(round => (
+              {(workflow?.nodes ?? interview.rounds.map(round => ({ ...round, nodeKey: `legacy-round-${round.id}`, nodeType: round.roundType, displayOrder: round.roundNo, origin: 'STATIC' as const })))
+                .map(node => ({ node, round: interview.rounds.find(round => round.id === node.id) }))
+                .filter((item): item is { node: NonNullable<typeof workflow>['nodes'][number]; round: NonNullable<typeof interview>['rounds'][number] } => item.round !== undefined)
+                .map(({ node, round }) => (
                 /* 外层改用 div：button 内嵌 button 属非法 HTML，浏览器会提前闭合外层按钮 */
                 <div
                   key={round.id}
@@ -230,11 +237,11 @@ export default function MultiRoundInterviewPage() {
                   className={`cursor-pointer rounded-xl border p-3 text-left transition-all ${ROUND_COLORS[round.roundType] ?? 'border-slate-200'} ${activeRoundId === round.id ? 'ring-2 ring-primary-500' : ''}`}
                 >
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{round.roundNo}. {ROUND_LABELS[round.roundType] ?? round.roundType}</p>
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200">{node.displayOrder}. {ROUND_LABELS[node.nodeType] ?? node.nodeType}</p>
                     {round.status === 'IN_PROGRESS' && <Clock className="w-3 h-3 text-primary-600" />}
                   </div>
                   <p className="mt-1 text-xs text-slate-500">{round.status} · 最多 {round.questionLimit} 题</p>
-                  {round.status === 'PENDING' && round.roundNo === interview.interview.currentRoundNo + 1 && (
+                  {round.status === 'PENDING' && activeRoundId === round.id && (
                     <button
                       type="button"
                       disabled={busy !== null}

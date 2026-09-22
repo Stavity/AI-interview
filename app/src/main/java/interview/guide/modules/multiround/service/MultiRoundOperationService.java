@@ -146,14 +146,42 @@ public class MultiRoundOperationService {
     requireResumeBound(question.getRound().getInterview());
     String sessionId = sessionId(question.getRound());
     String operation = "ANSWER:" + questionId;
-    executeIdempotent(sessionId, operation, key,
-        record -> null,
+    boolean accepted = executeIdempotent(sessionId, operation, key,
+        record -> false,
         () -> {
           questionService.answer(questionId, answer);
           idempotencyService.record(sessionId, operation, key,
               question.getRound().getInterview(), "QUESTION", questionId);
-          return null;
+          return true;
         });
+    if (accepted) progressAfterCandidateAction(question.getRound().getId());
+  }
+
+  /**
+   * Server-owned progression hook. A user action can only complete the current node once every
+   * persisted question is complete; transition and next-node materialization retain their own
+   * idempotency records so a browser retry cannot duplicate a question set.
+   */
+  public void progressAfterCandidateAction(Long roundId) {
+    MultiRoundEntity round = getRound(roundId);
+    if (round.getStatus() != MultiRoundEntity.Status.IN_PROGRESS) return;
+    List<MultiRoundQuestionEntity> questions = questionRepository.findByRoundIdOrderBySequenceNoAsc(roundId);
+    if (questions.size() < round.getQuestionLimit()
+        || questions.stream().anyMatch(question -> question.getStatus() == MultiRoundQuestionEntity.Status.PENDING)) {
+      return;
+    }
+    String sessionId = sessionId(round);
+    try {
+      finishRound(roundId, "system-auto-finish:" + roundId);
+      MultiRoundEntity next = nextRound(sessionId, "system-auto-next:" + roundId);
+      if (next != null) {
+        startRound(next.getId(), "system-auto-start:" + next.getId());
+      }
+    } catch (BusinessException error) {
+      // A node may be completed concurrently. The next user action or recovery read can safely
+      // retry because every automatic step has a stable idempotency key.
+      log.info("自动推进暂未完成: roundId={}, code={}, message={}", roundId, error.getCode(), error.getMessage());
+    }
   }
 
   public AlgorithmSubmissionEntity submitAlgorithm(Long questionId, String key, String language, String sourceCode) {

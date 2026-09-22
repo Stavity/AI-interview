@@ -198,4 +198,29 @@ class MultiRoundOperationServiceTest {
         .isInstanceOf(BusinessException.class)
         .hasMessageContaining("必须绑定简历");
   }
+
+  @Test
+  @DisplayName("所有题目完成后由服务端自动结束当前轮并准备下一轮")
+  void shouldAutomaticallyProgressAfterAllQuestionsComplete() {
+    MultiRoundQuestionEntity completed = boundQuestion("session-auto");
+    completed.setStatus(MultiRoundQuestionEntity.Status.ANSWERED);
+    MultiRoundEntity round = completed.getRound();
+    round.setId(12L);
+    round.setStatus(MultiRoundEntity.Status.IN_PROGRESS);
+    round.setQuestionLimit(1);
+    MultiRoundInterviewEntity interview = round.getInterview();
+    interview.setId(3L);
+    when(roundRepository.findById(12L)).thenReturn(Optional.of(round));
+    when(questionRepository.findByRoundIdOrderBySequenceNoAsc(12L)).thenReturn(java.util.List.of(completed));
+    when(idempotencyService.find(anyString(), anyString(), anyString())).thenReturn(Optional.empty());
+    when(lifecycleService.finish(12L)).thenReturn(round);
+    when(interviewService.getBySessionId("session-auto")).thenReturn(interview);
+    when(lifecycleService.advanceToNextRound(3L)).thenReturn(null);
+
+    service().progressAfterCandidateAction(12L);
+
+    verify(lifecycleService).finish(12L);
+    verify(lifecycleService).advanceToNextRound(3L);
+    verify(questionGenerationService, never()).draft(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
+  }
 }

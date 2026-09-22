@@ -12,6 +12,7 @@ import lombok.Setter;
 @Getter @Setter @NoArgsConstructor
 public class MultiRoundInterviewEntity {
   public enum Status { CREATED, ROUND_READY, IN_PROGRESS, ROUND_EVALUATING, ROUND_COMPLETED, COMPLETED, FAILED }
+  public enum OrchestrationMode { LEGACY_STATIC, STATIC, SHADOW, GOOGLE_ADK, STATIC_FALLBACK }
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
   @OneToOne(fetch = FetchType.LAZY) @JoinColumn(name = "interview_session_id", nullable = false, unique = true) private InterviewSessionEntity interviewSession;
   @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) private Status status = Status.CREATED;
@@ -24,6 +25,8 @@ public class MultiRoundInterviewEntity {
   @Column(name = "skill_id", length = 64) private String skillId;
   @Column(length = 16) private String difficulty;
   @Column(name = "scope_fingerprint", length = 64) private String scopeFingerprint;
+  @Enumerated(EnumType.STRING) @Column(name = "orchestration_mode", nullable = false, length = 32)
+  private OrchestrationMode orchestrationMode = OrchestrationMode.LEGACY_STATIC;
   @Column(name = "started_at") private LocalDateTime startedAt;
   @Column(name = "completed_at") private LocalDateTime completedAt;
   @Column(name = "created_at", nullable = false, updatable = false) private LocalDateTime createdAt;

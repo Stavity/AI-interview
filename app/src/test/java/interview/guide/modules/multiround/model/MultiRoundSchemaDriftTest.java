@@ -46,7 +46,11 @@ class MultiRoundSchemaDriftTest {
           "status", 32),
       "multi_rounds", Map.of(
           "round_type", 32,
-          "status", 32),
+          "status", 32,
+          "node_key", 64,
+          "node_type", 48,
+          "difficulty_band", 32,
+          "origin", 32),
       "algorithm_submissions", Map.of(
           "language", 16,
           "template_version", 32,
@@ -69,7 +73,17 @@ class MultiRoundSchemaDriftTest {
           "resume_snapshot_version", 64,
           "skill_id", 64,
           "difficulty", 16,
-          "scope_fingerprint", 64));
+          "scope_fingerprint", 64,
+          "orchestration_mode", 32),
+      "multi_round_workflow_instances", Map.of(
+          "execution_mode", 32,
+          "status", 32,
+          "definition_version", 64,
+          "checkpoint_key", 96),
+      "multi_round_workflow_events", Map.of(
+          "event_key", 160,
+          "event_type", 64,
+          "checkpoint_key", 96));
 
   @Test
   @DisplayName("实体 @Column(length) 必须与迁移 DDL 的 VARCHAR(n) 完全一致")
@@ -106,8 +120,8 @@ class MultiRoundSchemaDriftTest {
     Pattern createTable = Pattern.compile(
         "CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(\\w+)\\s*\\(", Pattern.CASE_INSENSITIVE);
     // ALTER TABLE 可一次添加多列（ADD COLUMN a ..., ADD COLUMN b ...），先整段取出再逐个 ADD COLUMN 解析
-    Pattern alterTable = Pattern.compile(
-        "ALTER\\s+TABLE\\s+(\\w+)\\s+((?:.|\\n)*?);", Pattern.CASE_INSENSITIVE);
+    Pattern alterStatement = Pattern.compile(
+        "ALTER\\s+TABLE\\s+(\\w+)\\s+(.+)$", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     Pattern addColumn = Pattern.compile(
         "ADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(\\w+)\\s+VARCHAR\\((\\d+)\\)",
         Pattern.CASE_INSENSITIVE);
@@ -120,13 +134,21 @@ class MultiRoundSchemaDriftTest {
     for (Path file : files) {
       String sql = Files.readString(file, StandardCharsets.UTF_8);
 
-      Matcher alter = alterTable.matcher(sql);
-      while (alter.find()) {
+      // Split SQL statements first. It prevents a previous TEXT column or an ALTER ... DROP
+      // statement from making a reluctant cross-line matcher skip later ADD COLUMN clauses.
+      for (String statement : sql.split(";")) {
+        Matcher alter = alterStatement.matcher(statement);
+        if (!alter.find()) continue;
         String table = alter.group(1).toLowerCase();
-        Matcher add = addColumn.matcher(alter.group(2));
-        while (add.find()) {
-          result.computeIfAbsent(table, key -> new LinkedHashMap<>())
-              .put(add.group(1).toLowerCase(), Integer.parseInt(add.group(2)));
+        // A single ALTER statement may start with a TEXT column and then add several VARCHAR
+        // columns. Scan every comma-separated add clause rather than relying on a regex match
+        // starting at the first ADD COLUMN token.
+        for (String clause : alter.group(2).split(",")) {
+          Matcher add = addColumn.matcher(clause);
+          if (add.find()) {
+            result.computeIfAbsent(table, key -> new LinkedHashMap<>())
+                .put(add.group(1).toLowerCase(), Integer.parseInt(add.group(2)));
+          }
         }
       }
 

@@ -34,10 +34,11 @@ class MultiRoundLifecycleServiceTest {
   @Mock private MultiRoundInterviewRepository interviewRepository;
   @Mock private MultiRoundQuestionGenerationService questionGenerationService;
   @Mock private MultiRoundPlanningContextFactory planningContextFactory;
+  @Mock private MultiRoundWorkflowService workflowService;
 
   private MultiRoundLifecycleService service() {
     return new MultiRoundLifecycleService(roundRepository, questionRepository, interviewRepository,
-        roundReportService, questionGenerationService, planningContextFactory);
+        roundReportService, questionGenerationService, planningContextFactory, workflowService);
   }
 
   private InterviewPlan plan(int roundNo, String type) {

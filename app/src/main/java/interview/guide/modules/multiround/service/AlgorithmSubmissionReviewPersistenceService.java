@@ -24,6 +24,8 @@ public class AlgorithmSubmissionReviewPersistenceService {
       submission.setEvaluationJson(objectMapper.writeValueAsString(review));
       submission.setEvaluationStatus(AlgorithmSubmissionEntity.EvaluationStatus.COMPLETED);
       submission.setEvaluationErrorCode(null);
+      // Algorithm code is only considered completed after its static review has produced facts.
+      submission.getQuestion().setStatus(interview.guide.modules.multiround.model.MultiRoundQuestionEntity.Status.EVALUATED);
       return submissionRepository.save(submission);
     } catch (Exception error) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "算法静态评审结果序列化失败");

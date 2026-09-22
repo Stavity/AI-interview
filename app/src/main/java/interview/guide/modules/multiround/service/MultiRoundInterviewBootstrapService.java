@@ -33,6 +33,7 @@ public class MultiRoundInterviewBootstrapService {
   private final MultiRoundInterviewRepository interviewRepository;
   private final MultiRoundBootstrapPersistenceService persistenceService;
   private final RedisService redisService;
+  private final MultiRoundAutomaticStartService automaticStartService;
 
   private static final List<MultiRoundInterviewEntity.Status> ACTIVE_STATUSES = List.of(
       MultiRoundInterviewEntity.Status.CREATED,
@@ -70,6 +71,7 @@ public class MultiRoundInterviewBootstrapService {
     var active = interviewRepository.findFirstByScopeFingerprintAndStatusIn(
         scopeFingerprint, ACTIVE_STATUSES);
     if (active.isPresent()) {
+      automaticStartService.ensureFirstNodeStarted(active.get());
       return response(active.get(), true);
     }
 
@@ -81,18 +83,23 @@ public class MultiRoundInterviewBootstrapService {
           var underLock = interviewRepository.findFirstByScopeFingerprintAndStatusIn(
               scopeFingerprint, ACTIVE_STATUSES);
           if (underLock.isPresent()) {
+            automaticStartService.ensureFirstNodeStarted(underLock.get());
             return response(underLock.get(), true);
           }
           try {
             MultiRoundInterviewEntity created = persistenceService.create(
                 resumeId, request.skillId(), request.difficulty(), idempotencyKey,
                 normalizedJd, scopeFingerprint, snapshot, sha256(snapshot));
+            automaticStartService.ensureFirstNodeStarted(created);
             return response(created, false);
           } catch (DataIntegrityViolationException conflict) {
             log.info("多轮面试范围指纹冲突，回读既有活跃面试: resumeId={}", resumeId);
             return interviewRepository
                 .findFirstByScopeFingerprintAndStatusIn(scopeFingerprint, ACTIVE_STATUSES)
-                .map(existing -> response(existing, true))
+                .map(existing -> {
+                  automaticStartService.ensureFirstNodeStarted(existing);
+                  return response(existing, true);
+                })
                 .orElseThrow(() -> new BusinessException(
                     ErrorCode.MULTI_ROUND_OPERATION_IN_PROGRESS, "多轮面试正在创建中，请稍后重试"));
           }

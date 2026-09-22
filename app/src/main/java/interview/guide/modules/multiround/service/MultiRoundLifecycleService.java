@@ -37,6 +37,7 @@ public class MultiRoundLifecycleService {
   private final MultiRoundRoundReportService roundReportService;
   private final MultiRoundQuestionGenerationService questionGenerationService;
   private final MultiRoundPlanningContextFactory planningContextFactory;
+  private final MultiRoundWorkflowService workflowService;
 
   /** 启动前置：完成全部校验并取出 LLM 所需上下文。只读短事务。 */
   @Transactional(readOnly = true)
@@ -81,7 +82,9 @@ public class MultiRoundLifecycleService {
     interview.setCurrentRoundNo(round.getRoundNo());
     interview.setStatus(MultiRoundInterviewEntity.Status.IN_PROGRESS);
     if (interview.getStartedAt() == null) interview.setStartedAt(LocalDateTime.now());
-    return roundRepository.save(round);
+    MultiRoundEntity saved = roundRepository.save(round);
+    workflowService.nodeStarted(interview, saved);
+    return saved;
   }
 
   /**
@@ -138,7 +141,12 @@ public class MultiRoundLifecycleService {
     } else {
       interview.setStatus(MultiRoundInterviewEntity.Status.ROUND_COMPLETED);
     }
-    return roundRepository.save(round);
+    MultiRoundEntity saved = roundRepository.save(round);
+    workflowService.nodeCompleted(interview, saved);
+    if (interview.getStatus() == MultiRoundInterviewEntity.Status.COMPLETED) {
+      workflowService.completed(interview);
+    }
+    return saved;
   }
 
   /**
@@ -159,14 +167,17 @@ public class MultiRoundLifecycleService {
     if (currentRound.getRoundType() == MultiRoundEntity.Type.HR) {
       interview.setStatus(MultiRoundInterviewEntity.Status.COMPLETED);
       interviewRepository.save(interview);
+      workflowService.completed(interview);
       return null;
     }
     interview.setStatus(MultiRoundInterviewEntity.Status.ROUND_READY);
     interviewRepository.save(interview);
-    return rounds.stream()
+    MultiRoundEntity next = rounds.stream()
         .filter(r -> r.getRoundNo() == interview.getCurrentRoundNo() + 1)
         .findFirst()
         .orElse(null);
+    if (next != null) workflowService.nextNodeReady(interview, next);
+    return next;
   }
 
   private MultiRoundEntity getRound(Long roundId) {

@@ -29,6 +29,8 @@ import interview.guide.modules.questiontag.model.QuestionType;
 import interview.guide.modules.questiontag.repository.QuestionKnowledgeNodeRepository;
 import interview.guide.modules.questiontag.repository.QuestionKnowledgeTagRepository;
 import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator;
+import interview.guide.modules.questiontag.service.QuestionGenerationScope;
+import interview.guide.modules.questiontag.service.QuestionGenerationScopeFactory;
 import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator.TagSelection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +66,7 @@ public class KnowledgeBaseQuestionService {
   private final QuestionKnowledgeTagRepository questionTagRepository;
   private final QuestionKnowledgeNodeRepository knowledgeNodeRepository;
   private final QuestionKnowledgeValidator questionKnowledgeValidator;
+  private final QuestionGenerationScopeFactory questionGenerationScopeFactory;
 
   @Transactional(readOnly = true)
   public List<KnowledgeBaseQuestionDTO> listQuestions(Long knowledgeBaseId,
@@ -267,12 +270,17 @@ public class KnowledgeBaseQuestionService {
     int categoryLimit = request.categoryLimit() == null
         ? DEFAULT_CATEGORY_LIMIT
         : Math.max(1, Math.min(request.categoryLimit(), 5));
+    QuestionGenerationScope generationScope = questionGenerationScopeFactory.current(
+        KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID, QuestionSourceType.KNOWLEDGE_BASE);
     QuestionGenerationConfig config = new QuestionGenerationConfig(
         difficulty,
         Math.max(1, request.questionCount()),
         followUpCount,
         categoryLimit,
-        trimToNull(request.llmProvider())
+        trimToNull(request.llmProvider()),
+        generationScope.taxonomyVersion(),
+        generationScope.allowedRootCodes().stream().sorted().toList(),
+        QuestionGenerationScopeFactory.TAGGING_POLICY_VERSION
     );
     QuestionGenStatusResponse response =
         questionGenerationStateService.createTask(knowledgeBaseId, config);

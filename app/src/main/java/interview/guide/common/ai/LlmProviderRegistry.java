@@ -142,6 +142,37 @@ public class LlmProviderRegistry {
     }
 
     /**
+     * Creates an uncached, task-scoped question-generation client. It exposes only the supplied
+     * callbacks (never the global Skills tool or chat memory) and always enables tool execution.
+     */
+    @SuppressWarnings("removal")
+    public ChatClient getQuestionGenerationChatClient(
+            String providerId, List<ToolCallback> scopedCallbacks) {
+        String id = resolveProviderId(providerId);
+        if (toolCallingManager == null) {
+            throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                "题目标签工具调用未配置，无法安全生成带标签题目");
+        }
+        if (scopedCallbacks == null || scopedCallbacks.isEmpty()) {
+            throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                "题目标签工具未绑定本次出题范围");
+        }
+        ChatClient.Builder builder = ChatClient.builder(getChatModel(id))
+            .defaultToolCallbacks(scopedCallbacks.toArray(ToolCallback[]::new))
+            .defaultAdvisors(buildToolCallAdvisor(false));
+        buildSafeGuardAdvisor().ifPresent(advisor -> builder.defaultAdvisors(advisor));
+        return builder.build();
+    }
+
+    public String canonicalProviderId(String providerId) {
+        return resolveProviderId(providerId);
+    }
+
+    public String configuredChatModel(String providerId) {
+        return loadProviderOrThrow(resolveProviderId(providerId)).model();
+    }
+
+    /**
      * 获取语音面试专用 ChatClient：SkillsTool + ToolCallAdvisor（流式）。
      * 不加 Memory Advisor（语音面试手动管理对话历史）。
      */

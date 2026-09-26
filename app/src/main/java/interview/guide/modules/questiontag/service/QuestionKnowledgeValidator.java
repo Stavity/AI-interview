@@ -10,6 +10,7 @@ import interview.guide.modules.questiontag.model.QuestionSourceType;
 import interview.guide.modules.questiontag.model.QuestionTagRelationType;
 import interview.guide.modules.questiontag.model.QuestionTaggingStatus;
 import interview.guide.modules.questiontag.model.QuestionTaxonomyVersionEntity;
+import interview.guide.modules.questiontag.model.QuestionType;
 import interview.guide.modules.questiontag.repository.QuestionKnowledgeNodeRepository;
 import interview.guide.modules.questiontag.repository.QuestionTaxonomyVersionRepository;
 import java.util.ArrayList;
@@ -55,6 +56,57 @@ public class QuestionKnowledgeValidator {
       validateAssignable(version, code);
     }
     return new TagSelection(version, primary, secondary);
+  }
+
+  /** Trusted final validation for a generated question against its captured version and Skill scope. */
+  public TagSelection validateQuestionGenerationSelection(
+      int taxonomyVersion,
+      Set<String> allowedRoots,
+      String primaryCode,
+      List<String> secondaryCodes
+  ) {
+    if (versionRepository.findById(taxonomyVersion).isEmpty()) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "题目知识目录版本不存在: " + taxonomyVersion);
+    }
+    if (allowedRoots == null || allowedRoots.isEmpty()) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "本次出题的知识点范围为空");
+    }
+    String primary = primaryCode == null || primaryCode.isBlank() ? null : primaryCode.trim();
+    if (primary == null) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "每道新题必须包含一个主知识点");
+    }
+    List<String> secondary = normalizeCodes(secondaryCodes);
+    if (secondary.size() > MAX_SECONDARY_TAGS) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "每道题最多选择 4 个次知识点");
+    }
+    Set<String> unique = new HashSet<>();
+    unique.add(primary);
+    validateScopedAssignable(taxonomyVersion, primary, allowedRoots);
+    for (String code : secondary) {
+      if (!unique.add(code)) {
+        throw new BusinessException(ErrorCode.BAD_REQUEST, "主、次知识点不能重复: " + code);
+      }
+      validateScopedAssignable(taxonomyVersion, code, allowedRoots);
+    }
+    return new TagSelection(taxonomyVersion, primary, secondary);
+  }
+
+  public QuestionType requireQuestionType(String value) {
+    if (value == null || value.isBlank()) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "每道新题必须包含固定题型");
+    }
+    try {
+      return QuestionType.valueOf(value.trim().toUpperCase(java.util.Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "不支持的题目类型: " + value);
+    }
+  }
+
+  public int requireDifficultyLevel(Integer level) {
+    if (level == null || level < 1 || level > 5) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "每道新题的难度必须为 1～5 级");
+    }
+    return level;
   }
 
   public void validateReadyForActivation(
@@ -122,6 +174,15 @@ public class QuestionKnowledgeValidator {
             "知识点不存在或已停用: " + code));
     if (!node.isAssignable()) {
       throw new BusinessException(ErrorCode.BAD_REQUEST, "该知识节点不允许直接挂载到题目: " + code);
+    }
+  }
+
+  private void validateScopedAssignable(int version, String code, Set<String> allowedRoots) {
+    validateAssignable(version, code);
+    boolean inScope = allowedRoots.stream().anyMatch(root -> "TECH_KNOWLEDGE".equals(root)
+        || code.equals(root) || code.startsWith(root + "."));
+    if (!inScope) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "知识点不在本次 Skill 出题范围内: " + code);
     }
   }
 

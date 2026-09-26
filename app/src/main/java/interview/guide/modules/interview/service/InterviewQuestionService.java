@@ -12,12 +12,22 @@ import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.skill.InterviewSkillService;
 import interview.guide.modules.interview.skill.InterviewSkillService.CategoryDTO;
 import interview.guide.modules.interview.skill.InterviewSkillService.SkillDTO;
-import interview.guide.modules.interview.skill.InterviewSkillService.SkillCategoryDTO;
+import interview.guide.modules.questiontag.model.QuestionSourceRef;
+import interview.guide.modules.questiontag.model.QuestionSourceRef.Generator;
+import interview.guide.modules.questiontag.model.QuestionSourceType;
+import interview.guide.modules.questiontag.model.QuestionType;
+import interview.guide.modules.questiontag.model.QuestionTaggingStatus;
+import interview.guide.modules.questiontag.service.QuestionGenerationScope;
+import interview.guide.modules.questiontag.service.QuestionGenerationScopeFactory;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeTagToolCallbackFactory;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator.TagSelection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +37,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -62,15 +73,6 @@ public class InterviewQuestionService {
         "senior", "3年+经验。考察架构设计和深度调优。"
     );
 
-    private static final String[][] GENERIC_FALLBACK_QUESTIONS = {
-        {"请描述一个你主导解决的技术难题，你的分析思路是什么？", "GENERAL", "综合能力"},
-        {"你在做技术方案选型时，通常考虑哪些因素？请举例说明。", "GENERAL", "综合能力"},
-        {"请分享一次你处理线上故障的经历，从发现到修复的完整过程。", "GENERAL", "综合能力"},
-        {"你如何保证代码质量？介绍你实践过的有效手段。", "GENERAL", "综合能力"},
-        {"描述一个你做过的技术优化案例，优化的动机、方案和效果。", "GENERAL", "综合能力"},
-        {"你在团队协作中遇到过最大的分歧是什么？如何解决的？", "GENERAL", "综合能力"},
-    };
-
     private final PromptTemplate skillSystemPromptTemplate;
     private final PromptTemplate skillUserPromptTemplate;
     private final PromptTemplate resumeSystemPromptTemplate;
@@ -80,13 +82,25 @@ public class InterviewQuestionService {
     private final InterviewSkillService skillService;
     private final LlmProviderRegistry llmProviderRegistry;
     private final PromptSanitizer promptSanitizer;
+    private final QuestionGenerationScopeFactory scopeFactory;
+    private final QuestionKnowledgeTagToolCallbackFactory tagToolFactory;
+    private final QuestionKnowledgeValidator questionKnowledgeValidator;
     private final ExecutorService questionExecutor;
     private final int followUpCount;
 
     private record QuestionListDTO(List<QuestionDTO> questions) {}
 
-    private record QuestionDTO(String question, String type, String category,
-                               String topicSummary, List<String> followUps) {}
+    private record QuestionDTO(
+        String question,
+        String type,
+        String category,
+        String topicSummary,
+        List<String> followUps,
+        String primaryKnowledgeCode,
+        List<String> secondaryKnowledgeCodes,
+        Integer difficultyLevel,
+        String questionType
+    ) {}
 
     public InterviewQuestionService(
             StructuredOutputInvoker structuredOutputInvoker,
@@ -94,11 +108,17 @@ public class InterviewQuestionService {
             InterviewQuestionProperties properties,
             ResourceLoader resourceLoader,
             LlmProviderRegistry llmProviderRegistry,
-            PromptSanitizer promptSanitizer) throws IOException {
+            PromptSanitizer promptSanitizer,
+            QuestionGenerationScopeFactory scopeFactory,
+            QuestionKnowledgeTagToolCallbackFactory tagToolFactory,
+            QuestionKnowledgeValidator questionKnowledgeValidator) throws IOException {
         this.structuredOutputInvoker = structuredOutputInvoker;
         this.skillService = skillService;
         this.llmProviderRegistry = llmProviderRegistry;
         this.promptSanitizer = promptSanitizer;
+        this.scopeFactory = scopeFactory;
+        this.tagToolFactory = tagToolFactory;
+        this.questionKnowledgeValidator = questionKnowledgeValidator;
         this.questionExecutor = Executors.newVirtualThreadPerTaskExecutor();
         this.skillSystemPromptTemplate = loadTemplate(resourceLoader, properties.getQuestionSystemPromptPath());
         this.skillUserPromptTemplate = loadTemplate(resourceLoader, properties.getQuestionUserPromptPath());
@@ -127,16 +147,38 @@ public class InterviewQuestionService {
             List<CategoryDTO> customCategories,
             String jdText) {
 
+        if (questionCount < 1) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "出题数量必须至少为 1");
+        }
+
         SkillDTO skill = resolveSkill(skillId, customCategories, jdText);
         String difficultyDesc = resolveDifficulty(difficulty);
-        ChatClient questionChatClient =
-            llmProviderRegistry.getPlainChatClient(llmProvider);
+        QuestionGenerationScope scope = scopeFactory.current(
+            skill.id(), QuestionSourceType.MOCK_INTERVIEW_GENERATED);
+        List<ToolCallback> tagTools = tagToolFactory.create(scope);
+        ChatClient configuredQuestionClient;
+        boolean configuredToolCalling;
+        try {
+            configuredQuestionClient = llmProviderRegistry.getQuestionGenerationChatClient(llmProvider, tagTools);
+            configuredToolCalling = true;
+        } catch (BusinessException e) {
+            log.warn("当前环境未启用题目标签工具调用，将使用服务端候选标签降级: {}", e.getMessage());
+            configuredQuestionClient = llmProviderRegistry.getPlainChatClient(llmProvider);
+            configuredToolCalling = false;
+        }
+        final ChatClient questionChatClient = configuredQuestionClient;
+        final boolean toolCallingEnabled = configuredToolCalling;
+        String providerId = llmProviderRegistry.canonicalProviderId(llmProvider);
+        QuestionSourceRef sourceRef = new QuestionSourceRef(null, null, List.of(),
+            "mock interview question generation",
+            new Generator(providerId, llmProviderRegistry.configuredChatModel(providerId), "question-generation-v1"));
 
         boolean hasResume = resumeText != null && !resumeText.isBlank();
         String historicalSection = buildHistoricalSection(historicalQuestions);
+        List<String> fallbackTagQueries = buildFallbackTagQueries(skill, resumeText);
         if (!hasResume) {
             return generateDirectionOnly(questionChatClient, skill, difficultyDesc, questionCount,
-                historicalSection);
+                historicalSection, scope, sourceRef, toolCallingEnabled, fallbackTagQueries);
         }
 
         int resumeCount = Math.max(1, (int) Math.round(questionCount * RESUME_QUESTION_RATIO));
@@ -147,12 +189,12 @@ public class InterviewQuestionService {
 
         CompletableFuture<List<InterviewQuestionDTO>> resumeFuture = CompletableFuture.supplyAsync(
             () -> generateResumeQuestions(questionChatClient, resumeText, resumeCount, skill,
-                difficultyDesc, historicalSection),
+                difficultyDesc, historicalSection, scope, sourceRef, toolCallingEnabled, fallbackTagQueries),
             questionExecutor);
 
         CompletableFuture<List<InterviewQuestionDTO>> directionFuture = CompletableFuture.supplyAsync(
             () -> generateDirectionOnly(questionChatClient, skill, difficultyDesc, directionCount,
-                historicalSection),
+                historicalSection, scope, sourceRef, toolCallingEnabled, fallbackTagQueries),
             questionExecutor);
 
         List<InterviewQuestionDTO> resumeQuestions;
@@ -163,7 +205,7 @@ public class InterviewQuestionService {
             log.error("简历题生成失败，降级为全方向题", e.getCause());
             directionFuture.cancel(true);
             return generateDirectionOnly(questionChatClient, skill, difficultyDesc, questionCount,
-                historicalSection);
+                historicalSection, scope, sourceRef, toolCallingEnabled, fallbackTagQueries);
         }
 
         try {
@@ -171,14 +213,17 @@ public class InterviewQuestionService {
         } catch (CompletionException e) {
             log.error("方向题生成失败，降级为全简历题", e.getCause());
             if (resumeQuestions.isEmpty()) {
-                return generateFallbackQuestions(skill, questionCount);
+                throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                    "方向题生成失败，且简历题未生成可用结果");
             }
-            return resumeQuestions;
+            return generateResumeQuestions(questionChatClient, resumeText, questionCount, skill,
+                difficultyDesc, historicalSection, scope, sourceRef, toolCallingEnabled, fallbackTagQueries);
         }
 
         if (resumeQuestions.isEmpty() && directionQuestions.isEmpty()) {
             log.warn("简历题和方向题均为空，回退到默认问题");
-            return generateFallbackQuestions(skill, questionCount);
+            throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                "题目标签校验失败，无法安全生成面试题");
         }
 
         List<InterviewQuestionDTO> merged = mergeQuestionBatches(resumeQuestions, directionQuestions);
@@ -189,7 +234,12 @@ public class InterviewQuestionService {
 
     private List<InterviewQuestionDTO> generateResumeQuestions(
             ChatClient questionClient, String resumeText, int questionCount,
-            SkillDTO skill, String difficultyDesc, String historicalSection) {
+            SkillDTO skill, String difficultyDesc, String historicalSection,
+            QuestionGenerationScope scope, QuestionSourceRef sourceRef,
+            boolean toolCallingEnabled, List<String> fallbackTagQueries) {
+        if (questionCount <= 0) {
+            return List.of();
+        }
         try {
             Map<String, Object> variables = new HashMap<>();
             variables.put("questionCount", questionCount);
@@ -202,16 +252,12 @@ public class InterviewQuestionService {
 
             String systemPrompt = resumeSystemPromptTemplate.render()
                 + buildSkillPersonaSection(skill)
-                + "\n\n" + outputConverter.getFormat();
+                + buildTaggingInstruction(scope);
             String userPrompt = resumeUserPromptTemplate.render(variables);
 
-            QuestionListDTO dto = structuredOutputInvoker.invoke(
-                questionClient, systemPrompt, userPrompt, outputConverter,
-                ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
-                "简历题生成失败：", "简历题", log);
-
-            List<InterviewQuestionDTO> questions = convertToQuestions(dto);
-            questions = capToMainCount(questions, questionCount);
+            List<InterviewQuestionDTO> questions = invokeAndValidateQuestionList(
+                questionClient, systemPrompt, userPrompt, scope, sourceRef,
+                toolCallingEnabled, fallbackTagQueries, questionCount, "简历题");
             log.info("简历题生成完成: 请求={}, 实际主问题={}",
                 questionCount, questions.stream().filter(q -> !q.isFollowUp()).count());
             return questions;
@@ -225,7 +271,12 @@ public class InterviewQuestionService {
 
     private List<InterviewQuestionDTO> generateDirectionOnly(
             ChatClient questionClient, SkillDTO skill, String difficultyDesc,
-            int questionCount, String historicalSection) {
+            int questionCount, String historicalSection,
+            QuestionGenerationScope scope, QuestionSourceRef sourceRef,
+            boolean toolCallingEnabled, List<String> fallbackTagQueries) {
+        if (questionCount <= 0) {
+            return List.of();
+        }
         Map<String, Integer> allocation = skillService.calculateAllocation(skill.categories(), questionCount);
         String allocationTable = skillService.buildAllocationDescription(allocation, skill.categories());
 
@@ -247,28 +298,21 @@ public class InterviewQuestionService {
             String systemPrompt = skillSystemPromptTemplate.render()
                 + buildSkillPersonaSection(skill)
                 + GENERIC_MODE_SYSTEM_APPEND
-                + outputConverter.getFormat();
+                + buildTaggingInstruction(scope);
             String userPrompt = skillUserPromptTemplate.render(variables);
 
-            QuestionListDTO dto = structuredOutputInvoker.invoke(
-                questionClient, systemPrompt, userPrompt, outputConverter,
-                ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
-                "方向题生成失败：", "方向题", log);
-
-            List<InterviewQuestionDTO> questions = convertToQuestions(dto);
-            if (questions.stream().filter(q -> !q.isFollowUp()).count() == 0) {
-                log.warn("方向题返回空题单，回退到默认问题");
-                return generateFallbackQuestions(skill, questionCount);
-            }
-            questions = capToMainCount(questions, questionCount);
+            List<InterviewQuestionDTO> questions = invokeAndValidateQuestionList(
+                questionClient, systemPrompt, userPrompt, scope, sourceRef,
+                toolCallingEnabled, fallbackTagQueries, questionCount, "方向题");
             log.info("方向题生成完成: 请求={}, 实际主问题={}",
                 questionCount, questions.stream().filter(q -> !q.isFollowUp()).count());
             return questions;
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            log.error("方向题生成失败，回退到默认问题: {}", e.getMessage(), e);
-            return generateFallbackQuestions(skill, questionCount);
+            log.error("方向题生成失败: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                "方向题生成失败：" + e.getMessage());
         }
     }
 
@@ -286,9 +330,7 @@ public class InterviewQuestionService {
             int newIndex = q.questionIndex() + offset;
             Integer newParent = q.parentQuestionIndex() != null
                 ? q.parentQuestionIndex() + offset : null;
-            merged.add(InterviewQuestionDTO.create(
-                newIndex, q.question(), q.type(), q.category(),
-                q.topicSummary(), q.isFollowUp(), newParent));
+            merged.add(q.withQuestionIndex(newIndex, newParent));
         }
         return merged;
     }
@@ -307,7 +349,109 @@ public class InterviewQuestionService {
             DIFFICULTY_DESCRIPTIONS.get(InterviewDefaults.DIFFICULTY));
     }
 
-    private List<InterviewQuestionDTO> convertToQuestions(QuestionListDTO dto) {
+    private List<InterviewQuestionDTO> invokeAndValidateQuestionList(
+            ChatClient questionClient,
+            String baseSystemPrompt,
+            String userPrompt,
+            QuestionGenerationScope scope,
+            QuestionSourceRef sourceRef,
+            boolean toolCallingEnabled,
+            List<String> fallbackTagQueries,
+            int expectedCount,
+            String context
+    ) {
+        BusinessException lastValidationError = null;
+        if (toolCallingEnabled) {
+            for (int attempt = 0; attempt < 2; attempt++) {
+                String systemPrompt = baseSystemPrompt
+                    + (lastValidationError == null ? "" : buildValidationFeedback(lastValidationError))
+                    + "\n\n" + outputConverter.getFormat();
+                QuestionListDTO dto;
+                try {
+                    dto = structuredOutputInvoker.invoke(questionClient, systemPrompt, userPrompt,
+                        outputConverter, ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                        context + "生成失败：", context, log);
+                } catch (BusinessException e) {
+                    lastValidationError = e;
+                    break;
+                }
+                try {
+                    return toValidatedQuestions(dto, scope, sourceRef, expectedCount, context);
+                } catch (BusinessException e) {
+                    lastValidationError = e;
+                }
+            }
+        }
+
+        ChatClient fallbackClient = toolCallingEnabled
+            ? llmProviderRegistry.getPlainChatClient(sourceRef.generator().providerId())
+            : questionClient;
+        String candidateSection = scopeFactory.fallbackCandidateSection(scope, fallbackTagQueries);
+        String fallbackSystemPrompt = baseSystemPrompt
+            + "\n\n# 标签候选降级模式\n"
+            + "当前 Provider 未能完成稳定的 Tool Calling。不要调用工具；只允许从下面服务端按本次固定版本和范围检索得到的候选知识点中选择 code。"
+            + "如果候选标签不足以支持合法输出，不要编造 code；本次生成将失败且不会保存无标签题目。\n"
+            + promptSanitizer.wrapWithDelimiters("question_tag_candidates",
+                promptSanitizer.sanitize(candidateSection))
+            + (lastValidationError == null ? "" : buildValidationFeedback(lastValidationError))
+            + "\n\n" + outputConverter.getFormat();
+        log.warn("题目标签工具调用降级为服务端候选集: skill={}, version={}, reason={}",
+            scope.skillId(), scope.taxonomyVersion(),
+            lastValidationError == null ? "ToolCallingManager unavailable" : lastValidationError.getMessage());
+        QuestionListDTO fallbackDto = structuredOutputInvoker.invoke(fallbackClient,
+            fallbackSystemPrompt, userPrompt, outputConverter,
+            ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+            context + "候选标签降级生成失败：", context + "_candidate_fallback", log);
+        return toValidatedQuestions(fallbackDto, scope, sourceRef, expectedCount, context);
+    }
+
+    private List<InterviewQuestionDTO> toValidatedQuestions(
+            QuestionListDTO dto, QuestionGenerationScope scope, QuestionSourceRef sourceRef,
+            int expectedCount, String context) {
+        List<InterviewQuestionDTO> questions = capToMainCount(
+            convertToQuestions(dto, scope, sourceRef), expectedCount);
+        requireQuestionCount(questions, expectedCount, context);
+        return questions;
+    }
+
+    private String buildValidationFeedback(BusinessException error) {
+        return "\n\n# 后端标签校验反馈\n上一版输出未通过校验，请修正标签、难度、题型或题目数量后重新生成。\n"
+            + promptSanitizer.wrapWithDelimiters("question_validation_error",
+                promptSanitizer.sanitize(error.getMessage()));
+    }
+
+    private List<String> buildFallbackTagQueries(SkillDTO skill, String sourceText) {
+        LinkedHashSet<String> terms = new LinkedHashSet<>();
+        if (skill != null) {
+            addSearchTerm(terms, skill.name());
+            if (skill.categories() != null) {
+                skill.categories().forEach(category -> {
+                    addSearchTerm(terms, category.label());
+                    addSearchTerm(terms, category.key());
+                });
+            }
+        }
+        if (sourceText != null && !sourceText.isBlank()) {
+            for (String part : sourceText.split("[\\r\\n，。；：！？、]+")) {
+                addSearchTerm(terms, part);
+                if (terms.size() >= 10) {
+                    break;
+                }
+            }
+        }
+        return terms.stream().limit(10).toList();
+    }
+
+    private void addSearchTerm(LinkedHashSet<String> terms, String value) {
+        if (value == null || value.isBlank() || terms.size() >= 10) {
+            return;
+        }
+        String term = value.trim();
+        terms.add(term.length() > 100 ? term.substring(0, 100) : term);
+    }
+
+    private List<InterviewQuestionDTO> convertToQuestions(
+            QuestionListDTO dto, QuestionGenerationScope scope, QuestionSourceRef sourceRef) {
         List<InterviewQuestionDTO> questions = new ArrayList<>();
         int index = 0;
 
@@ -319,20 +463,52 @@ public class InterviewQuestionService {
             if (q == null || q.question() == null || q.question().isBlank()) {
                 continue;
             }
-            String type = (q.type() != null && !q.type().isBlank()) ? q.type().toUpperCase() : DEFAULT_QUESTION_TYPE;
+            String type = (q.type() != null && !q.type().isBlank())
+                ? q.type().toUpperCase() : DEFAULT_QUESTION_TYPE;
+            TagSelection selection = questionKnowledgeValidator.validateQuestionGenerationSelection(
+                scope.taxonomyVersion(), scope.allowedRootCodes(), q.primaryKnowledgeCode(),
+                q.secondaryKnowledgeCodes());
+            int level = questionKnowledgeValidator.requireDifficultyLevel(q.difficultyLevel());
+            QuestionType questionType = questionKnowledgeValidator.requireQuestionType(q.questionType());
             int mainQuestionIndex = index;
-            questions.add(InterviewQuestionDTO.create(index++, q.question(), type, q.category(), q.topicSummary(), false, null));
+            questions.add(InterviewQuestionDTO.create(index++, q.question(), type, q.category(),
+                q.topicSummary(), false, null).withTagMetadata(level, questionType.name(),
+                selection.primaryCode(), selection.secondaryCodes(), scope.sourceType().name(), sourceRef,
+                selection.taxonomyVersion(), QuestionTaggingStatus.VERIFIED.name()));
 
             List<String> followUps = sanitizeFollowUps(q.followUps());
             for (int i = 0; i < followUps.size(); i++) {
                 questions.add(InterviewQuestionDTO.create(
                     index++, followUps.get(i), type,
                     buildFollowUpCategory(q.category(), i + 1), null, true, mainQuestionIndex
-                ));
+                ).withTagMetadata(level, questionType.name(), selection.primaryCode(),
+                    selection.secondaryCodes(), scope.sourceType().name(), sourceRef,
+                    selection.taxonomyVersion(), QuestionTaggingStatus.VERIFIED.name()));
             }
         }
 
         return questions;
+    }
+
+    private String buildTaggingInstruction(QuestionGenerationScope scope) {
+        return """
+
+            # 题目知识标签（必须遵守）
+            - 本次 taxonomyVersion 固定为 %d，允许知识范围为：%s。
+            - 先使用 query_question_knowledge_tags 查询目录，不得自行编造或拼接知识点 code；必要时使用 validate_question_knowledge_tags 校验。
+            - 每个主问题都必须输出 primaryKnowledgeCode、secondaryKnowledgeCodes（最多 4 个）、difficultyLevel（1～5）和 questionType。
+            - questionType 只能是 CONCEPT、PRINCIPLE、COMPARISON、CODING、SQL、DESIGN、SCENARIO、DEBUGGING、CODE_REVIEW、PROJECT、OPERATION、BEHAVIORAL。
+            - 难度 1～2 为基础，3 为中等，4～5 为高阶；追问继承主问题的标签。
+            - 如果目录确实没有合适知识点，仍需按最接近的合法知识点输出；后端会再次严格校验。
+            """.formatted(scope.taxonomyVersion(), String.join(", ", scope.allowedRootCodes()));
+    }
+
+    private void requireQuestionCount(List<InterviewQuestionDTO> questions, int expected, String context) {
+        long actual = questions.stream().filter(question -> !question.isFollowUp()).count();
+        if (actual != expected) {
+            throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                context + "数量不符合要求：请求 " + expected + "，实际 " + actual);
+        }
     }
 
     /**
@@ -362,43 +538,6 @@ public class InterviewQuestionService {
         }
         log.info("题目截断: 主问题 {} → {}", currentMainCount, maxMainCount);
         return capped;
-    }
-
-    private List<InterviewQuestionDTO> generateFallbackQuestions(SkillDTO skill, int count) {
-        List<SkillCategoryDTO> categories = skill != null ? skill.categories() : List.of();
-        List<InterviewQuestionDTO> questions = new ArrayList<>();
-        int index = 0;
-
-        if (!categories.isEmpty()) {
-            int generated = 0;
-            while (generated < count) {
-                SkillCategoryDTO cat = categories.get(generated % categories.size());
-                String question = "请谈谈你在\"" + cat.label() + "\"方向的技术理解和实践经验。";
-                questions.add(InterviewQuestionDTO.create(index++, question, cat.key(), cat.label(), null, false, null));
-                int mainIndex = index - 1;
-                for (int j = 0; j < followUpCount; j++) {
-                    questions.add(InterviewQuestionDTO.create(
-                        index++, buildDefaultFollowUp(question, j + 1),
-                        cat.key(), buildFollowUpCategory(cat.label(), j + 1), null, true, mainIndex
-                    ));
-                }
-                generated++;
-            }
-            return questions;
-        }
-
-        for (int i = 0; i < Math.min(count, GENERIC_FALLBACK_QUESTIONS.length); i++) {
-            String[] q = GENERIC_FALLBACK_QUESTIONS[i];
-            questions.add(InterviewQuestionDTO.create(index++, q[0], q[1], q[2], null, false, null));
-            int mainIndex = index - 1;
-            for (int j = 0; j < followUpCount; j++) {
-                questions.add(InterviewQuestionDTO.create(
-                    index++, buildDefaultFollowUp(q[0], j + 1),
-                    q[1], buildFollowUpCategory(q[2], j + 1), null, true, mainIndex
-                ));
-            }
-        }
-        return questions;
     }
 
     private String buildHistoricalSection(List<HistoricalQuestion> historicalQuestions) {
@@ -460,10 +599,4 @@ public class InterviewQuestionService {
         return base + "（追问" + order + "）";
     }
 
-    private String buildDefaultFollowUp(String mainQuestion, int order) {
-        if (order == 1) {
-            return "基于\"" + mainQuestion + "\"，请结合你亲自做过的一个真实场景展开说明。";
-        }
-        return "基于\"" + mainQuestion + "\"，如果线上出现异常，你会如何定位并给出修复方案？";
-    }
 }

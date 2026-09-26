@@ -91,4 +91,12 @@ public record InterviewQuestionDTO(
             isFollowUp, parentQuestionIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
             level, type, primaryCode, secondaryCodes, source, reference, version, tagStatus);
     }
+
+    public InterviewQuestionDTO withQuestionIndex(int index, Integer parentIndex) {
+        return new InterviewQuestionDTO(
+            index, question, type, category, topicSummary, userAnswer, score, feedback,
+            isFollowUp, parentIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
+            difficultyLevel, questionType, primaryKnowledgeCode, secondaryKnowledgeCodes, sourceType,
+            sourceRef, taxonomyVersion, taggingStatus);
+    }
 }

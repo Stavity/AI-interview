@@ -10,13 +10,21 @@ import interview.guide.modules.knowledgebase.model.QuestionGenerationConfig;
 import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
-import lombok.RequiredArgsConstructor;
+import interview.guide.modules.questiontag.model.QuestionKnowledgeTagEntity;
+import interview.guide.modules.questiontag.model.QuestionTagRelationType;
+import interview.guide.modules.questiontag.model.QuestionTaggingSource;
+import interview.guide.modules.questiontag.model.QuestionTaggingStatus;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator.TagSelection;
+import interview.guide.modules.questiontag.repository.QuestionKnowledgeTagRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,14 +32,34 @@ import java.util.UUID;
  * 知识库题目生成状态的事务边界。
  */
 @Service
-@RequiredArgsConstructor
 public class QuestionGenerationStateService {
 
   public static final String SAFE_FAILURE_MESSAGE = "题目生成失败，请稍后重试";
 
   private final KnowledgeBaseRepository knowledgeBaseRepository;
   private final KnowledgeBaseQuestionRepository questionRepository;
+  private final QuestionKnowledgeTagRepository questionTagRepository;
   private final ObjectMapper objectMapper;
+
+  @Autowired
+  public QuestionGenerationStateService(
+      KnowledgeBaseRepository knowledgeBaseRepository,
+      KnowledgeBaseQuestionRepository questionRepository,
+      QuestionKnowledgeTagRepository questionTagRepository,
+      ObjectMapper objectMapper
+  ) {
+    this.knowledgeBaseRepository = knowledgeBaseRepository;
+    this.questionRepository = questionRepository;
+    this.questionTagRepository = questionTagRepository;
+    this.objectMapper = objectMapper;
+  }
+
+  // Retained only for same-package legacy unit tests; production writes must provide validated tags.
+  QuestionGenerationStateService(KnowledgeBaseRepository knowledgeBaseRepository,
+                                 KnowledgeBaseQuestionRepository questionRepository,
+                                 ObjectMapper objectMapper) {
+    this(knowledgeBaseRepository, questionRepository, null, objectMapper);
+  }
 
   @Transactional(rollbackFor = Exception.class)
   public QuestionGenStatusResponse createTask(
@@ -119,22 +147,63 @@ public class QuestionGenerationStateService {
   }
 
   @Transactional(rollbackFor = Exception.class)
+  boolean replaceQuestionsAndComplete(
+      Long knowledgeBaseId, String taskId, List<KnowledgeBaseQuestionEntity> questions, int skippedCount
+  ) {
+    if (questionTagRepository != null) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "题目生成必须同时提交后端校验的知识标签");
+    }
+    KnowledgeBaseEntity kb = lockKnowledgeBaseOrNull(knowledgeBaseId);
+    if (!matches(kb, taskId, QuestionGenStatus.PROCESSING)) {
+      return false;
+    }
+    questions.forEach(question -> question.setKnowledgeBase(kb));
+    questionRepository.deleteByKnowledgeBaseId(knowledgeBaseId);
+    questionRepository.saveAll(questions);
+    completeTask(kb, questions.size(), skippedCount);
+    return true;
+  }
+
+  @Transactional(rollbackFor = Exception.class)
   public boolean replaceQuestionsAndComplete(
       Long knowledgeBaseId,
       String taskId,
       List<KnowledgeBaseQuestionEntity> questions,
+      List<TagSelection> tagSelections,
       int skippedCount
   ) {
     KnowledgeBaseEntity kb = lockKnowledgeBaseOrNull(knowledgeBaseId);
     if (!matches(kb, taskId, QuestionGenStatus.PROCESSING)) {
       return false;
     }
+    if (tagSelections == null || questions.size() != tagSelections.size()) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "生成题目与标签校验结果数量不一致");
+    }
 
     questions.forEach(question -> question.setKnowledgeBase(kb));
     questionRepository.deleteByKnowledgeBaseId(knowledgeBaseId);
-    questionRepository.saveAll(questions);
+    List<KnowledgeBaseQuestionEntity> savedQuestions = questionRepository.saveAllAndFlush(questions);
+    List<QuestionKnowledgeTagEntity> tags = new ArrayList<>();
+    for (int index = 0; index < savedQuestions.size(); index++) {
+      KnowledgeBaseQuestionEntity question = savedQuestions.get(index);
+      TagSelection selection = tagSelections.get(index);
+      question.setTaxonomyVersion(selection.taxonomyVersion());
+      question.setTaggingStatus(QuestionTaggingStatus.VERIFIED);
+      tags.add(QuestionKnowledgeTagEntity.create(question.getId(), selection.taxonomyVersion(),
+          selection.primaryCode(), QuestionTagRelationType.PRIMARY, QuestionTaggingSource.LLM,
+          BigDecimal.ONE, null));
+      selection.secondaryCodes().forEach(code -> tags.add(QuestionKnowledgeTagEntity.create(
+          question.getId(), selection.taxonomyVersion(), code, QuestionTagRelationType.SECONDARY,
+          QuestionTaggingSource.LLM, new BigDecimal("0.5000"), null)));
+    }
+    questionTagRepository.saveAll(tags);
 
     int savedCount = questions.size();
+    completeTask(kb, savedCount, skippedCount);
+    return true;
+  }
+
+  private void completeTask(KnowledgeBaseEntity kb, int savedCount, int skippedCount) {
     String message = skippedCount > 0
         ? String.format("已生成 %d 道题，跳过 %d 道重复题", savedCount, skippedCount)
         : String.format("已生成 %d 道题", savedCount);
@@ -144,7 +213,6 @@ public class QuestionGenerationStateService {
     kb.setQuestionGenSavedCount(savedCount);
     kb.setQuestionGenSkippedCount(skippedCount);
     kb.setQuestionGenUpdatedAt(LocalDateTime.now());
-    return true;
   }
 
   @Transactional(rollbackFor = Exception.class)

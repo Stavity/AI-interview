@@ -1,0 +1,785 @@
+version: 1
+nodes:
+  - code: TECH_KNOWLEDGE
+    name: 技术知识体系
+    nodeKind: ROOT
+    description: 面试题所考察的技术知识与工程能力目录
+    children:
+      - code: PROGRAMMING_LANGUAGE
+        name: 编程语言
+        nodeKind: DOMAIN
+        children:
+          - code: PROGRAMMING_LANGUAGE.JAVA
+            name: Java
+            nodeKind: TECHNOLOGY
+            aliases: [Java 语言]
+            children:
+              - code: PROGRAMMING_LANGUAGE.JAVA.LANGUAGE_BASICS
+                name: 语言基础
+                nodeKind: TOPIC
+                children:
+                  - code: PROGRAMMING_LANGUAGE.JAVA.LANGUAGE_BASICS.TYPE_SYSTEM
+                    name: 类型系统
+                    assignable: true
+                    aliases: [基本类型与引用类型]
+                  - code: PROGRAMMING_LANGUAGE.JAVA.LANGUAGE_BASICS.OOP
+                    name: 面向对象
+                    assignable: true
+                    aliases: [封装继承多态]
+                  - code: PROGRAMMING_LANGUAGE.JAVA.LANGUAGE_BASICS.GENERICS
+                    name: 泛型
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.LANGUAGE_BASICS.EXCEPTIONS
+                    name: 异常处理
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.LANGUAGE_BASICS.REFLECTION
+                    name: 反射
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.LANGUAGE_BASICS.ANNOTATIONS
+                    name: 注解
+                    assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVA.COLLECTIONS
+                name: 集合框架
+                nodeKind: TOPIC
+                children:
+                  - code: PROGRAMMING_LANGUAGE.JAVA.COLLECTIONS.LIST
+                    name: List
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.COLLECTIONS.MAP
+                    name: Map
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.COLLECTIONS.SET
+                    name: Set
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.COLLECTIONS.HASHING
+                    name: 哈希与扩容
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.COLLECTIONS.COMPLEXITY
+                    name: 集合复杂度与选择
+                    assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY
+                name: 并发编程
+                nodeKind: TOPIC
+                children:
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.THREAD
+                    name: 线程与线程状态
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.SYNCHRONIZATION
+                    name: synchronized
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.LOCKS
+                    name: Lock 与 ReentrantLock
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.AQS
+                    name: AQS
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.CAS
+                    name: CAS 与原子类
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.MEMORY_MODEL
+                    name: Java 内存模型
+                    assignable: true
+                    aliases: [JMM]
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.VOLATILE
+                    name: volatile
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.THREAD_POOL
+                    name: 线程池
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.CONCURRENCY.ASYNC
+                    name: CompletableFuture 与异步编排
+                    assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVA.IO
+                name: IO 与 NIO
+                nodeKind: TOPIC
+                children:
+                  - code: PROGRAMMING_LANGUAGE.JAVA.IO.BIO
+                    name: BIO
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.IO.NIO
+                    name: NIO
+                    assignable: true
+                  - code: PROGRAMMING_LANGUAGE.JAVA.IO.NETWORK
+                    name: 网络 IO 模型
+                    assignable: true
+          - code: PROGRAMMING_LANGUAGE.PYTHON
+            name: Python
+            nodeKind: TECHNOLOGY
+            children:
+              - code: PROGRAMMING_LANGUAGE.PYTHON.LANGUAGE_BASICS
+                name: 语言基础
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.PYTHON.COLLECTIONS
+                name: 容器与数据模型
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.PYTHON.DECORATORS
+                name: 装饰器
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.PYTHON.GENERATORS
+                name: 迭代器与生成器
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.PYTHON.ASYNC
+                name: 异步编程
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.PYTHON.TYPING
+                name: 类型标注与类型系统
+                assignable: true
+          - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT
+            name: JavaScript 与 TypeScript
+            nodeKind: TECHNOLOGY
+            children:
+              - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT.TYPE_SYSTEM
+                name: 类型与类型转换
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT.CLOSURE
+                name: 作用域与闭包
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT.PROTOTYPE
+                name: 原型与继承
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT.EVENT_LOOP
+                name: 事件循环
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT.ASYNC
+                name: Promise 与异步编程
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT.MODULES
+                name: 模块系统
+                assignable: true
+              - code: PROGRAMMING_LANGUAGE.JAVASCRIPT_TYPESCRIPT.TYPESCRIPT
+                name: TypeScript 类型系统
+                assignable: true
+      - code: DATA_STRUCTURE_ALGORITHM
+        name: 数据结构与算法
+        nodeKind: DOMAIN
+        children:
+          - code: DATA_STRUCTURE_ALGORITHM.ARRAY
+            name: 数组
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.LINKED_LIST
+            name: 链表
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.HASH
+            name: 哈希表
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.STACK_QUEUE
+            name: 栈与队列
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.HEAP
+            name: 堆与优先队列
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.TREE
+            name: 树与二叉树
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.GRAPH
+            name: 图与图算法
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.STRING
+            name: 字符串
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.SORTING
+            name: 排序
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.BINARY_SEARCH
+            name: 二分查找
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.SLIDING_WINDOW
+            name: 双指针与滑动窗口
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.GREEDY
+            name: 贪心
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.BACKTRACKING
+            name: 回溯
+            assignable: true
+          - code: DATA_STRUCTURE_ALGORITHM.DYNAMIC_PROGRAMMING
+            name: 动态规划
+            assignable: true
+            aliases: [DP]
+          - code: DATA_STRUCTURE_ALGORITHM.ALGORITHM_DESIGN
+            name: 算法设计与复杂度分析
+            assignable: true
+      - code: COMPUTER_FUNDAMENTALS
+        name: 计算机基础
+        nodeKind: DOMAIN
+        children:
+          - code: COMPUTER_FUNDAMENTALS.OPERATING_SYSTEM
+            name: 操作系统
+            nodeKind: TOPIC
+            children:
+              - code: COMPUTER_FUNDAMENTALS.OPERATING_SYSTEM.PROCESS_THREAD
+                name: 进程与线程
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.OPERATING_SYSTEM.MEMORY
+                name: 内存管理
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.OPERATING_SYSTEM.SCHEDULING
+                name: 调度与上下文切换
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.OPERATING_SYSTEM.FILE_SYSTEM
+                name: 文件系统
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.OPERATING_SYSTEM.SYNCHRONIZATION
+                name: 进程同步与死锁
+                assignable: true
+          - code: COMPUTER_FUNDAMENTALS.NETWORK
+            name: 计算机网络
+            nodeKind: TOPIC
+            children:
+              - code: COMPUTER_FUNDAMENTALS.NETWORK.TCP
+                name: TCP
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.NETWORK.HTTP
+                name: HTTP
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.NETWORK.HTTPS_TLS
+                name: HTTPS 与 TLS
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.NETWORK.DNS
+                name: DNS
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.NETWORK.LOAD_BALANCING
+                name: 负载均衡
+                assignable: true
+              - code: COMPUTER_FUNDAMENTALS.NETWORK.SECURITY
+                name: 网络安全
+                assignable: true
+          - code: COMPUTER_FUNDAMENTALS.COMPUTER_ARCHITECTURE
+            name: 计算机组成与体系结构
+            assignable: true
+          - code: COMPUTER_FUNDAMENTALS.SECURITY
+            name: 计算机安全基础
+            assignable: true
+      - code: RUNTIME_FRAMEWORK
+        name: 运行时与框架
+        nodeKind: DOMAIN
+        children:
+          - code: RUNTIME_FRAMEWORK.JVM
+            name: JVM
+            nodeKind: TECHNOLOGY
+            aliases: [Java 虚拟机]
+            children:
+              - code: RUNTIME_FRAMEWORK.JVM.MEMORY_MODEL
+                name: 运行时数据区
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.JVM.CLASS_LOADING
+                name: 类加载机制
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.JVM.GARBAGE_COLLECTION
+                name: 垃圾回收
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.JVM.JIT
+                name: JIT 与运行时优化
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.JVM.TROUBLESHOOTING
+                name: JVM 故障诊断
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.JVM.MEMORY_MODEL_JMM
+                name: Java 内存模型与 happens-before
+                assignable: true
+          - code: RUNTIME_FRAMEWORK.SPRING
+            name: Spring 生态
+            nodeKind: TECHNOLOGY
+            children:
+              - code: RUNTIME_FRAMEWORK.SPRING.IOC_DI
+                name: IoC 与依赖注入
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.SPRING.AOP
+                name: AOP
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.SPRING.BOOT
+                name: Spring Boot 与自动配置
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.SPRING.MVC
+                name: Spring MVC
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.SPRING.TRANSACTION
+                name: Spring 事务
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.SPRING.DATA_ACCESS
+                name: 数据访问与 ORM
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.SPRING.SECURITY
+                name: Spring Security
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.SPRING.CONFIGURATION
+                name: 配置与生命周期
+                assignable: true
+          - code: RUNTIME_FRAMEWORK.PYTHON_WEB
+            name: Python Web 框架
+            nodeKind: TOPIC
+            children:
+              - code: RUNTIME_FRAMEWORK.PYTHON_WEB.DJANGO
+                name: Django
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.PYTHON_WEB.FLASK
+                name: Flask
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.PYTHON_WEB.FASTAPI
+                name: FastAPI
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.PYTHON_WEB.MIDDLEWARE
+                name: 中间件与请求生命周期
+                assignable: true
+          - code: RUNTIME_FRAMEWORK.FRONTEND_FRAMEWORK
+            name: 前端框架
+            nodeKind: TOPIC
+            children:
+              - code: RUNTIME_FRAMEWORK.FRONTEND_FRAMEWORK.REACT
+                name: React
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.FRONTEND_FRAMEWORK.VUE
+                name: Vue
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.FRONTEND_FRAMEWORK.COMPONENT
+                name: 组件设计与复用
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.FRONTEND_FRAMEWORK.STATE
+                name: 状态管理
+                assignable: true
+              - code: RUNTIME_FRAMEWORK.FRONTEND_FRAMEWORK.ROUTING
+                name: 路由
+                assignable: true
+      - code: DATABASE_STORAGE
+        name: 数据库与存储
+        nodeKind: DOMAIN
+        children:
+          - code: DATABASE_STORAGE.DATABASE_FUNDAMENTALS
+            name: 数据库基础与设计
+            nodeKind: TOPIC
+            children:
+              - code: DATABASE_STORAGE.DATABASE_FUNDAMENTALS.RELATIONAL_MODEL
+                name: 关系模型与范式
+                assignable: true
+              - code: DATABASE_STORAGE.DATABASE_FUNDAMENTALS.SQL
+                name: SQL 基础
+                assignable: true
+              - code: DATABASE_STORAGE.DATABASE_FUNDAMENTALS.DATA_MODEL
+                name: 数据建模
+                assignable: true
+              - code: DATABASE_STORAGE.DATABASE_FUNDAMENTALS.DATABASE_DESIGN
+                name: 数据库设计
+                assignable: true
+          - code: DATABASE_STORAGE.MYSQL
+            name: MySQL
+            nodeKind: TECHNOLOGY
+            children:
+              - code: DATABASE_STORAGE.MYSQL.STORAGE_ENGINE
+                name: 存储引擎
+                assignable: true
+              - code: DATABASE_STORAGE.MYSQL.INDEX
+                name: 索引
+                nodeKind: TOPIC
+                children:
+                  - code: DATABASE_STORAGE.MYSQL.INDEX.BTREE
+                    name: B+Tree 与索引结构
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.INDEX.COMPOSITE
+                    name: 联合索引与最左前缀
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.INDEX.COVERING
+                    name: 覆盖索引
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.INDEX.SELECTIVITY
+                    name: 索引选择性与失效场景
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.INDEX.MAINTENANCE
+                    name: 索引维护与在线变更
+                    assignable: true
+              - code: DATABASE_STORAGE.MYSQL.TRANSACTION
+                name: 事务与并发控制
+                nodeKind: TOPIC
+                children:
+                  - code: DATABASE_STORAGE.MYSQL.TRANSACTION.ACID
+                    name: ACID 与事务基础
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.TRANSACTION.ISOLATION_LEVEL
+                    name: 隔离级别
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.TRANSACTION.MVCC
+                    name: MVCC
+                    assignable: true
+                    aliases: [多版本并发控制, Read View]
+                  - code: DATABASE_STORAGE.MYSQL.TRANSACTION.UNDO_LOG
+                    name: Undo Log
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.TRANSACTION.LOCK
+                    name: 锁与死锁
+                    assignable: true
+                  - code: DATABASE_STORAGE.MYSQL.TRANSACTION.REDO_BINLOG
+                    name: Redo Log 与 Binlog
+                    assignable: true
+              - code: DATABASE_STORAGE.MYSQL.OPTIMIZER
+                name: 查询优化器与执行计划
+                assignable: true
+              - code: DATABASE_STORAGE.MYSQL.REPLICATION
+                name: 复制与主从延迟
+                assignable: true
+              - code: DATABASE_STORAGE.MYSQL.HIGH_AVAILABILITY
+                name: 高可用与故障切换
+                assignable: true
+              - code: DATABASE_STORAGE.MYSQL.PERFORMANCE
+                name: 性能诊断与优化
+                assignable: true
+          - code: DATABASE_STORAGE.REDIS
+            name: Redis
+            nodeKind: TECHNOLOGY
+            children:
+              - code: DATABASE_STORAGE.REDIS.DATA_TYPES
+                name: 数据结构与编码
+                assignable: true
+              - code: DATABASE_STORAGE.REDIS.CACHE_PATTERNS
+                name: 缓存模式与缓存问题
+                assignable: true
+              - code: DATABASE_STORAGE.REDIS.PERSISTENCE
+                name: 持久化
+                nodeKind: TOPIC
+                children:
+                  - code: DATABASE_STORAGE.REDIS.PERSISTENCE.RDB
+                    name: RDB
+                    assignable: true
+                  - code: DATABASE_STORAGE.REDIS.PERSISTENCE.AOF
+                    name: AOF
+                    assignable: true
+              - code: DATABASE_STORAGE.REDIS.REPLICATION
+                name: 主从复制
+                assignable: true
+              - code: DATABASE_STORAGE.REDIS.SENTINEL
+                name: Sentinel
+                assignable: true
+              - code: DATABASE_STORAGE.REDIS.CLUSTER
+                name: Cluster
+                assignable: true
+              - code: DATABASE_STORAGE.REDIS.DISTRIBUTED_LOCK
+                name: 分布式锁
+                assignable: true
+              - code: DATABASE_STORAGE.REDIS.HOT_KEYS
+                name: 热 Key 与大 Key
+                assignable: true
+              - code: DATABASE_STORAGE.REDIS.CACHE_CONSISTENCY
+                name: 缓存一致性
+                assignable: true
+          - code: DATABASE_STORAGE.NOSQL
+            name: NoSQL 数据库
+            assignable: true
+          - code: DATABASE_STORAGE.SEARCH_ENGINE
+            name: 搜索引擎
+            assignable: true
+          - code: DATABASE_STORAGE.OBJECT_STORAGE
+            name: 对象存储
+            assignable: true
+      - code: DISTRIBUTED_MIDDLEWARE
+        name: 分布式与中间件
+        nodeKind: DOMAIN
+        children:
+          - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM
+            name: 分布式系统
+            nodeKind: TOPIC
+            children:
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.CONSISTENCY
+                name: 一致性与共识
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.CAP
+                name: CAP 与 BASE
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.IDEMPOTENCY
+                name: 幂等
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.DISTRIBUTED_LOCK
+                name: 分布式锁
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.DISTRIBUTED_TRANSACTION
+                name: 分布式事务
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.SHARDING
+                name: 分库分表
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.RATE_LIMIT
+                name: 限流
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.FAULT_TOLERANCE
+                name: 容错与降级
+                assignable: true
+          - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE
+            name: 消息队列
+            nodeKind: TOPIC
+            children:
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.PRODUCER
+                name: 生产者与投递确认
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.CONSUMER
+                name: 消费者与消费位点
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.CONSUMER_GROUP
+                name: 消费组与分区分配
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.ORDERING
+                name: 消息顺序性
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.RETRY
+                name: 重试与延迟消息
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.DEAD_LETTER
+                name: 死信队列
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.DELIVERY_SEMANTICS
+                name: 消息投递语义
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.TRANSACTIONAL
+                name: 事务消息与 Outbox
+                assignable: true
+              - code: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.BACKPRESSURE
+                name: 消费积压与背压
+                assignable: true
+          - code: DISTRIBUTED_MIDDLEWARE.RPC
+            name: RPC 与服务通信
+            assignable: true
+          - code: DISTRIBUTED_MIDDLEWARE.SERVICE_DISCOVERY
+            name: 服务发现
+            assignable: true
+          - code: DISTRIBUTED_MIDDLEWARE.CONFIG_CENTER
+            name: 配置中心
+            assignable: true
+          - code: DISTRIBUTED_MIDDLEWARE.SCHEDULING
+            name: 分布式调度
+            assignable: true
+      - code: WEB_FRONTEND
+        name: 前端与浏览器
+        nodeKind: DOMAIN
+        children:
+          - code: WEB_FRONTEND.BROWSER
+            name: 浏览器原理
+            nodeKind: TOPIC
+            children:
+              - code: WEB_FRONTEND.BROWSER.DOM
+                name: DOM 与 CSSOM
+                assignable: true
+              - code: WEB_FRONTEND.BROWSER.RENDERING
+                name: 浏览器渲染
+                assignable: true
+              - code: WEB_FRONTEND.BROWSER.EVENT_LOOP
+                name: 浏览器事件循环
+                assignable: true
+              - code: WEB_FRONTEND.BROWSER.STORAGE
+                name: 浏览器存储
+                assignable: true
+              - code: WEB_FRONTEND.BROWSER.NETWORK
+                name: 浏览器网络与缓存
+                assignable: true
+              - code: WEB_FRONTEND.BROWSER.SECURITY
+                name: 浏览器安全
+                assignable: true
+          - code: WEB_FRONTEND.HTML
+            name: HTML
+            assignable: true
+          - code: WEB_FRONTEND.CSS
+            name: CSS
+            nodeKind: TOPIC
+            children:
+              - code: WEB_FRONTEND.CSS.BOX_MODEL
+                name: 盒模型
+                assignable: true
+              - code: WEB_FRONTEND.CSS.FLEX
+                name: Flex 布局
+                assignable: true
+              - code: WEB_FRONTEND.CSS.GRID
+                name: Grid 布局
+                assignable: true
+              - code: WEB_FRONTEND.CSS.RESPONSIVE
+                name: 响应式布局
+                assignable: true
+              - code: WEB_FRONTEND.CSS.ANIMATION
+                name: 动画与过渡
+                assignable: true
+          - code: WEB_FRONTEND.ENGINEERING
+            name: 前端工程化
+            nodeKind: TOPIC
+            children:
+              - code: WEB_FRONTEND.ENGINEERING.BUILD
+                name: 构建与打包
+                assignable: true
+              - code: WEB_FRONTEND.ENGINEERING.COMPONENT_DESIGN
+                name: 组件设计
+                assignable: true
+              - code: WEB_FRONTEND.ENGINEERING.TESTING
+                name: 前端测试
+                assignable: true
+              - code: WEB_FRONTEND.ENGINEERING.ACCESSIBILITY
+                name: 无障碍
+                assignable: true
+          - code: WEB_FRONTEND.PERFORMANCE
+            name: 前端性能
+            assignable: true
+      - code: SYSTEM_DESIGN
+        name: 系统设计
+        nodeKind: DOMAIN
+        children:
+          - code: SYSTEM_DESIGN.REQUIREMENT_ANALYSIS
+            name: 需求分析与边界
+            assignable: true
+          - code: SYSTEM_DESIGN.CAPACITY_ESTIMATION
+            name: 容量估算
+            assignable: true
+          - code: SYSTEM_DESIGN.API_DESIGN
+            name: API 设计
+            assignable: true
+          - code: SYSTEM_DESIGN.DATA_MODEL
+            name: 数据模型设计
+            assignable: true
+          - code: SYSTEM_DESIGN.CACHE
+            name: 缓存设计
+            assignable: true
+          - code: SYSTEM_DESIGN.MESSAGE
+            name: 消息与异步处理设计
+            assignable: true
+          - code: SYSTEM_DESIGN.HIGH_AVAILABILITY
+            name: 高可用设计
+            assignable: true
+          - code: SYSTEM_DESIGN.OBSERVABILITY
+            name: 可观测性设计
+            assignable: true
+          - code: SYSTEM_DESIGN.SECURITY
+            name: 安全设计
+            assignable: true
+          - code: SYSTEM_DESIGN.TRADEOFF
+            name: 架构权衡
+            assignable: true
+      - code: TESTING_QUALITY
+        name: 测试与质量
+        nodeKind: DOMAIN
+        children:
+          - code: TESTING_QUALITY.BASICS
+            name: 测试基础
+            assignable: true
+          - code: TESTING_QUALITY.TEST_CASE_DESIGN
+            name: 测试用例设计
+            assignable: true
+          - code: TESTING_QUALITY.UNIT_TEST
+            name: 单元测试
+            assignable: true
+          - code: TESTING_QUALITY.INTEGRATION_TEST
+            name: 集成测试
+            assignable: true
+          - code: TESTING_QUALITY.API_TEST
+            name: API 测试
+            assignable: true
+          - code: TESTING_QUALITY.AUTOMATION
+            name: 自动化测试
+            assignable: true
+          - code: TESTING_QUALITY.PERFORMANCE_TEST
+            name: 性能测试
+            assignable: true
+          - code: TESTING_QUALITY.SECURITY_TEST
+            name: 安全测试
+            assignable: true
+          - code: TESTING_QUALITY.CODE_REVIEW
+            name: 代码审查
+            assignable: true
+      - code: DEVOPS_OBSERVABILITY
+        name: DevOps 与可观测性
+        nodeKind: DOMAIN
+        children:
+          - code: DEVOPS_OBSERVABILITY.LINUX
+            name: Linux
+            assignable: true
+          - code: DEVOPS_OBSERVABILITY.CONTAINERS
+            name: 容器与 Docker
+            assignable: true
+          - code: DEVOPS_OBSERVABILITY.CI_CD
+            name: CI/CD
+            assignable: true
+          - code: DEVOPS_OBSERVABILITY.DEPLOYMENT
+            name: 部署与发布
+            assignable: true
+          - code: DEVOPS_OBSERVABILITY.LOGGING
+            name: 日志
+            assignable: true
+          - code: DEVOPS_OBSERVABILITY.METRICS
+            name: 指标监控
+            assignable: true
+          - code: DEVOPS_OBSERVABILITY.TRACING
+            name: 分布式追踪
+            assignable: true
+          - code: DEVOPS_OBSERVABILITY.INCIDENT_RESPONSE
+            name: 故障响应与复盘
+            assignable: true
+      - code: AI_AGENT_APPLICATION
+        name: AI 应用与 Agent
+        nodeKind: DOMAIN
+        children:
+          - code: AI_AGENT_APPLICATION.LLM
+            name: 大语言模型应用
+            nodeKind: TOPIC
+            children:
+              - code: AI_AGENT_APPLICATION.LLM.MODEL_CALLING
+                name: 模型调用与参数
+                assignable: true
+              - code: AI_AGENT_APPLICATION.LLM.STRUCTURED_OUTPUT
+                name: 结构化输出
+                assignable: true
+              - code: AI_AGENT_APPLICATION.LLM.TOOL_CALLING
+                name: 工具调用
+                assignable: true
+              - code: AI_AGENT_APPLICATION.LLM.EVALUATION
+                name: 模型评估
+                assignable: true
+          - code: AI_AGENT_APPLICATION.PROMPT_ENGINEERING
+            name: Prompt Engineering
+            assignable: true
+          - code: AI_AGENT_APPLICATION.CONTEXT_ENGINEERING
+            name: 上下文工程
+            assignable: true
+          - code: AI_AGENT_APPLICATION.RAG
+            name: RAG 检索增强
+            nodeKind: TOPIC
+            aliases: [检索增强生成]
+            children:
+              - code: AI_AGENT_APPLICATION.RAG.DOCUMENT_PARSING
+                name: 文档解析
+                assignable: true
+              - code: AI_AGENT_APPLICATION.RAG.CHUNKING
+                name: 文本切分
+                assignable: true
+              - code: AI_AGENT_APPLICATION.RAG.EMBEDDING
+                name: 向量化与 Embedding
+                assignable: true
+              - code: AI_AGENT_APPLICATION.RAG.DENSE_RETRIEVAL
+                name: Dense 检索
+                assignable: true
+              - code: AI_AGENT_APPLICATION.RAG.HYBRID_RETRIEVAL
+                name: 混合检索
+                assignable: true
+              - code: AI_AGENT_APPLICATION.RAG.RERANK
+                name: Rerank 重排
+                assignable: true
+              - code: AI_AGENT_APPLICATION.RAG.EVALUATION
+                name: RAG 评估
+                assignable: true
+          - code: AI_AGENT_APPLICATION.MCP
+            name: MCP 协议
+            assignable: true
+          - code: AI_AGENT_APPLICATION.MULTI_AGENT
+            name: 多 Agent 协作
+            assignable: true
+          - code: AI_AGENT_APPLICATION.MEMORY
+            name: Agent 记忆
+            assignable: true
+          - code: AI_AGENT_APPLICATION.AGENT_WORKFLOW
+            name: Agent 工作流与编排
+            assignable: true
+          - code: AI_AGENT_APPLICATION.SECURITY
+            name: AI 安全与提示注入
+            assignable: true
+relations:
+  - sourceCode: DATABASE_STORAGE.REDIS.DISTRIBUTED_LOCK
+    targetCode: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.IDEMPOTENCY
+    relationType: RELATED_TO
+  - sourceCode: DATABASE_STORAGE.REDIS.DISTRIBUTED_LOCK
+    targetCode: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.CONSISTENCY
+    relationType: RELATED_TO
+  - sourceCode: DISTRIBUTED_MIDDLEWARE.MESSAGE_QUEUE.TRANSACTIONAL
+    targetCode: DISTRIBUTED_MIDDLEWARE.DISTRIBUTED_SYSTEM.IDEMPOTENCY
+    relationType: RELATED_TO
+  - sourceCode: DATABASE_STORAGE.MYSQL.TRANSACTION.MVCC
+    targetCode: DATABASE_STORAGE.MYSQL.TRANSACTION.ISOLATION_LEVEL
+    relationType: RELATED_TO

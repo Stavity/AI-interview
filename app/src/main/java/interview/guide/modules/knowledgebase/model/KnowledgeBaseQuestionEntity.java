@@ -14,6 +14,9 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import interview.guide.modules.questiontag.model.QuestionSourceType;
+import interview.guide.modules.questiontag.model.QuestionTaggingStatus;
+import interview.guide.modules.questiontag.model.QuestionType;
 
 import java.time.LocalDateTime;
 
@@ -50,6 +53,27 @@ public class KnowledgeBaseQuestionEntity {
   // 面试方向，由模型生成（例如"整洁架构"/"Redis"/"测试策略"），用于筛选和开始面试
   @Column(length = 64)
   private String category;
+
+  @Column(name = "difficulty_level")
+  private Integer difficultyLevel;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "question_type", length = 32)
+  private QuestionType questionType;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "source_type", length = 32)
+  private QuestionSourceType sourceType;
+
+  @Column(name = "source_ref", columnDefinition = "TEXT")
+  private String sourceRefJson;
+
+  @Column(name = "taxonomy_version")
+  private Integer taxonomyVersion;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "tagging_status", nullable = false, length = 24)
+  private QuestionTaggingStatus taggingStatus = QuestionTaggingStatus.REVIEW_REQUIRED;
 
   @Column(nullable = false, columnDefinition = "TEXT")
   private String question;
@@ -142,6 +166,54 @@ public class KnowledgeBaseQuestionEntity {
 
   public void setCategory(String category) {
     this.category = category;
+  }
+
+  public Integer getDifficultyLevel() {
+    return difficultyLevel;
+  }
+
+  public void setDifficultyLevel(Integer difficultyLevel) {
+    this.difficultyLevel = difficultyLevel;
+  }
+
+  public QuestionType getQuestionType() {
+    return questionType;
+  }
+
+  public void setQuestionType(QuestionType questionType) {
+    this.questionType = questionType;
+  }
+
+  public QuestionSourceType getSourceType() {
+    return sourceType;
+  }
+
+  public void setSourceType(QuestionSourceType sourceType) {
+    this.sourceType = sourceType;
+  }
+
+  public String getSourceRefJson() {
+    return sourceRefJson;
+  }
+
+  public void setSourceRefJson(String sourceRefJson) {
+    this.sourceRefJson = sourceRefJson;
+  }
+
+  public Integer getTaxonomyVersion() {
+    return taxonomyVersion;
+  }
+
+  public void setTaxonomyVersion(Integer taxonomyVersion) {
+    this.taxonomyVersion = taxonomyVersion;
+  }
+
+  public QuestionTaggingStatus getTaggingStatus() {
+    return taggingStatus;
+  }
+
+  public void setTaggingStatus(QuestionTaggingStatus taggingStatus) {
+    this.taggingStatus = taggingStatus;
   }
 
   public String getQuestion() {

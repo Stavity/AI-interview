@@ -15,6 +15,10 @@ import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionFollowUp
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
+import interview.guide.modules.questiontag.model.QuestionKnowledgeTagEntity;
+import interview.guide.modules.questiontag.model.QuestionSourceRef;
+import interview.guide.modules.questiontag.model.QuestionTagRelationType;
+import interview.guide.modules.questiontag.repository.QuestionKnowledgeTagRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,6 +52,7 @@ public class KnowledgeBaseInterviewService {
   private final KnowledgeBaseQuestionRepository questionRepository;
   private final InterviewSessionService interviewSessionService;
   private final ObjectMapper objectMapper;
+  private final QuestionKnowledgeTagRepository questionTagRepository;
 
   private record QuestionSource(KnowledgeBaseQuestionEntity question,
                                 List<String> keyPoints,
@@ -158,7 +163,7 @@ public class KnowledgeBaseInterviewService {
     for (QuestionSource source : selected) {
       KnowledgeBaseQuestionEntity entity = source.question();
       int mainIndex = questions.size();
-      questions.add(InterviewQuestionDTO.fromQuestionBank(
+      InterviewQuestionDTO mainQuestion = InterviewQuestionDTO.fromQuestionBank(
           mainIndex,
           entity.getQuestion(),
           defaultString(entity.getType(), "KNOWLEDGE_BASE"),
@@ -168,7 +173,8 @@ public class KnowledgeBaseInterviewService {
           source.keyPoints(),
           entity.getScoringRubric(),
           entity.getSourceContext()
-      ));
+      );
+      questions.add(applyTagSnapshot(mainQuestion, entity));
 
       // 在可用的追问池里随机抽 followUpCount 个，避免每次面试都问同一组追问
       List<KnowledgeBaseQuestionFollowUpDTO> picked = pickFollowUps(source.followUps(), followUpCount);
@@ -187,11 +193,59 @@ public class KnowledgeBaseInterviewService {
             followUp.referenceAnswer(),
             followUp.keyPoints(),
             followUp.scoringRubric(),
-            entity.getSourceContext()
+            entity.getSourceContext(),
+            null,
+            null,
+            null,
+            List.of(),
+            "KNOWLEDGE_BASE",
+            null,
+            null,
+            "REVIEW_REQUIRED"
         ));
+        questions.set(questions.size() - 1, applyTagSnapshot(questions.get(questions.size() - 1), entity));
       }
     }
     return questions;
+  }
+
+  private InterviewQuestionDTO applyTagSnapshot(
+      InterviewQuestionDTO question, KnowledgeBaseQuestionEntity entity
+  ) {
+    List<QuestionKnowledgeTagEntity> tags = questionTagRepository
+        .findByIdQuestionIdOrderByRelationTypeAscIdNodeCodeAsc(entity.getId());
+    String primaryCode = tags.stream()
+        .filter(tag -> tag.getRelationType() == QuestionTagRelationType.PRIMARY)
+        .map(tag -> tag.getId().getNodeCode())
+        .findFirst()
+        .orElse(null);
+    List<String> secondaryCodes = tags.stream()
+        .filter(tag -> tag.getRelationType() == QuestionTagRelationType.SECONDARY)
+        .map(tag -> tag.getId().getNodeCode())
+        .toList();
+    QuestionSourceRef sourceRef = readSourceRef(entity.getSourceRefJson());
+    return question.withTagMetadata(
+        entity.getDifficultyLevel(),
+        entity.getQuestionType() == null ? null : entity.getQuestionType().name(),
+        primaryCode,
+        secondaryCodes,
+        entity.getSourceType() == null ? "KNOWLEDGE_BASE" : entity.getSourceType().name(),
+        sourceRef,
+        entity.getTaxonomyVersion(),
+        entity.getTaggingStatus() == null ? "LEGACY_UNTAGGED" : entity.getTaggingStatus().name()
+    );
+  }
+
+  private QuestionSourceRef readSourceRef(String sourceRefJson) {
+    if (sourceRefJson == null || sourceRefJson.isBlank()) {
+      return null;
+    }
+    try {
+      return objectMapper.readValue(sourceRefJson, QuestionSourceRef.class);
+    } catch (JacksonException e) {
+      log.warn("解析题目来源快照失败: {}", e.getMessage());
+      return null;
+    }
   }
 
   /**

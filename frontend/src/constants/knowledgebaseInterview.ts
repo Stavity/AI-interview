@@ -24,6 +24,21 @@ export const DIFFICULTY_OPTIONS: DifficultyOption[] = [
   { value: 'senior', label: '高级' },
 ];
 
+export const QUESTION_TYPE_OPTIONS = [
+  { value: 'CONCEPT', label: '概念定义' },
+  { value: 'PRINCIPLE', label: '原理机制' },
+  { value: 'COMPARISON', label: '对比与权衡' },
+  { value: 'CODING', label: '编程实现' },
+  { value: 'SQL', label: 'SQL 编写与分析' },
+  { value: 'DESIGN', label: '系统或组件设计' },
+  { value: 'SCENARIO', label: '场景分析' },
+  { value: 'DEBUGGING', label: '故障定位' },
+  { value: 'CODE_REVIEW', label: '代码审查' },
+  { value: 'PROJECT', label: '项目经历' },
+  { value: 'OPERATION', label: '部署与运维' },
+  { value: 'BEHAVIORAL', label: '行为面试' },
+] as const;
+
 export const MAIN_QUESTION_COUNT_OPTIONS = [1, 3, 5, 8, 10];
 export const FOLLOW_UP_COUNT_OPTIONS = [0, 1, 2, 3];
 export const GENERATE_COUNT_OPTIONS = [3, 5, 10, 15];

@@ -85,9 +85,34 @@ export interface KnowledgeBaseQuestion {
   scoringRubric: string | null;
   followUps: KnowledgeBaseQuestionFollowUp[];
   sourceContext: string | null;
+  difficultyLevel: number | null;
+  questionType: string | null;
+  primaryKnowledgeCode: string | null;
+  secondaryKnowledgeCodes: string[];
+  knowledgeTags: KnowledgeBaseQuestionTag[];
+  sourceType: string | null;
+  sourceRef: QuestionSourceRef | null;
+  taxonomyVersion: number | null;
+  taggingStatus: string;
   status: KnowledgeBaseQuestionStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface KnowledgeBaseQuestionTag {
+  code: string;
+  name: string;
+  relationType: 'PRIMARY' | 'SECONDARY';
+  relevanceWeight: number;
+  taggingSource: string;
+  confidence: number | null;
+}
+
+export interface QuestionSourceRef {
+  knowledgeBaseId: number | null;
+  documentHash: string | null;
+  chunkIds: string[];
+  sourceLabel: string | null;
 }
 
 export interface GenerateKnowledgeBaseQuestionsRequest {
@@ -129,6 +154,11 @@ export interface SaveKnowledgeBaseQuestionRequest {
   scoringRubric?: string | null;
   followUps?: KnowledgeBaseQuestionFollowUp[];
   sourceContext?: string | null;
+  difficultyLevel?: number | null;
+  questionType?: string | null;
+  primaryKnowledgeCode?: string | null;
+  secondaryKnowledgeCodes?: string[];
+  clearKnowledgeTags?: boolean;
   status?: KnowledgeBaseQuestionStatus;
 }
 
@@ -137,6 +167,13 @@ export interface ListKnowledgeBaseQuestionsParams {
   category?: string;
   difficulty?: string;
   keyword?: string;
+  minDifficultyLevel?: number;
+  maxDifficultyLevel?: number;
+  questionType?: string;
+  sourceType?: string;
+  taggingStatus?: string;
+  taxonomyVersion?: number;
+  knowledgeCode?: string;
 }
 
 export interface CategoryCount {
@@ -314,7 +351,7 @@ export const knowledgeBaseApi = {
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value) {
-          searchParams.append(key, value);
+          searchParams.append(key, String(value));
         }
       });
     }

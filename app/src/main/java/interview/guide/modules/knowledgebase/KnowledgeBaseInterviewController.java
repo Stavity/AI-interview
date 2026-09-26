@@ -45,8 +45,17 @@ public class KnowledgeBaseInterviewController {
       @RequestParam(value = "status", required = false) KnowledgeBaseQuestionStatus status,
       @RequestParam(value = "category", required = false) String category,
       @RequestParam(value = "difficulty", required = false) String difficulty,
-      @RequestParam(value = "keyword", required = false) String keyword) {
-    return Result.success(questionService.listQuestions(id, status, category, difficulty, keyword));
+      @RequestParam(value = "keyword", required = false) String keyword,
+      @RequestParam(value = "minDifficultyLevel", required = false) Integer minDifficultyLevel,
+      @RequestParam(value = "maxDifficultyLevel", required = false) Integer maxDifficultyLevel,
+      @RequestParam(value = "questionType", required = false) String questionType,
+      @RequestParam(value = "sourceType", required = false) String sourceType,
+      @RequestParam(value = "taggingStatus", required = false) String taggingStatus,
+      @RequestParam(value = "taxonomyVersion", required = false) Integer taxonomyVersion,
+      @RequestParam(value = "knowledgeCode", required = false) String knowledgeCode) {
+    return Result.success(questionService.listQuestions(
+        id, status, category, difficulty, keyword, minDifficultyLevel, maxDifficultyLevel,
+        questionType, sourceType, taggingStatus, taxonomyVersion, knowledgeCode));
   }
 
   @GetMapping("/api/knowledgebase/{id}/questions/categories")

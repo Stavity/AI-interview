@@ -17,6 +17,10 @@ public record CreateKnowledgeBaseQuestionRequest(
     String scoringRubric,
     List<KnowledgeBaseQuestionFollowUpDTO> followUps,
     String sourceContext,
-    KnowledgeBaseQuestionStatus status
+    KnowledgeBaseQuestionStatus status,
+    Integer difficultyLevel,
+    String questionType,
+    String primaryKnowledgeCode,
+    List<String> secondaryKnowledgeCodes
 ) {
 }

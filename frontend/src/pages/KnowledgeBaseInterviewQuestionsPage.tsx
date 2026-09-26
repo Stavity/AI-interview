@@ -25,6 +25,7 @@ import {
   DEFAULT_CATEGORY_LIMIT,
   DIFFICULTY_OPTIONS,
   INPUT_CLASS,
+  QUESTION_TYPE_OPTIONS,
 } from '../constants/knowledgebaseInterview';
 import DeleteConfirmDialog from '../components/DeleteConfirmDialog';
 import QuestionFormDrawer, {
@@ -48,6 +49,13 @@ interface QuestionFilters {
   category: string;
   difficulty: string;
   keyword: string;
+  minDifficultyLevel: string;
+  maxDifficultyLevel: string;
+  questionType: string;
+  sourceType: string;
+  taggingStatus: string;
+  taxonomyVersion: string;
+  knowledgeCode: string;
 }
 
 const EMPTY_FILTERS: QuestionFilters = {
@@ -55,6 +63,13 @@ const EMPTY_FILTERS: QuestionFilters = {
   category: '',
   difficulty: '',
   keyword: '',
+  minDifficultyLevel: '',
+  maxDifficultyLevel: '',
+  questionType: '',
+  sourceType: '',
+  taggingStatus: '',
+  taxonomyVersion: '',
+  knowledgeCode: '',
 };
 
 const STATUS_TABS: Array<{ value: KnowledgeBaseQuestionStatus | ''; label: string }> = [
@@ -139,11 +154,22 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
       setCategoryOptions([]);
       return;
     }
+    if (filters.minDifficultyLevel && filters.maxDifficultyLevel
+        && Number(filters.minDifficultyLevel) > Number(filters.maxDifficultyLevel)) {
+      setQuestions([]);
+      setLoadingQuestions(false);
+      return;
+    }
     setLoadingQuestions(true);
     try {
       const [all, filtered] = await Promise.all([
         knowledgeBaseApi.listQuestions(knowledgeBaseIdNum),
-        knowledgeBaseApi.listQuestions(knowledgeBaseIdNum, filters),
+        knowledgeBaseApi.listQuestions(knowledgeBaseIdNum, {
+          ...filters,
+          minDifficultyLevel: filters.minDifficultyLevel ? Number(filters.minDifficultyLevel) : undefined,
+          maxDifficultyLevel: filters.maxDifficultyLevel ? Number(filters.maxDifficultyLevel) : undefined,
+          taxonomyVersion: filters.taxonomyVersion ? Number(filters.taxonomyVersion) : undefined,
+        }),
       ]);
       setAllQuestions(all);
       setQuestions(filtered);
@@ -191,6 +217,7 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
           sameTask
         )) {
           setFilters({
+            ...EMPTY_FILTERS,
             status: 'DRAFT',
             category: '',
             difficulty: current.questionGenConfig?.difficulty || '',
@@ -240,6 +267,11 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
     [questions, safePage, pageSize]
   );
   const allOnPageSelected = pagedQuestions.length > 0 && pagedQuestions.every(q => selectedIds.has(q.id));
+  const knowledgeTagOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    allQuestions.forEach(question => question.knowledgeTags?.forEach(tag => options.set(tag.code, tag.name)));
+    return Array.from(options, ([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allQuestions]);
 
   const toggleSelectAll = () => {
     setSelectedIds(prev => {
@@ -324,6 +356,14 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
     }
     if (!payload.category) {
       setFormError('面试方向不能为空');
+      return;
+    }
+    if (editingQuestion && payload.status === editingQuestion.status) {
+      delete payload.status;
+    }
+    if (payload.status === 'ACTIVE'
+        && (!payload.difficultyLevel || !payload.questionType || !payload.primaryKnowledgeCode)) {
+      setFormError('启用题目之前，请补齐 1～5 级难度、题型和主知识点标签。');
       return;
     }
     setSaving(true);
@@ -534,6 +574,73 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
+          <select
+            value={filters.minDifficultyLevel}
+            onChange={event => setFilters(prev => ({ ...prev, minDifficultyLevel: event.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">最低难度不限</option>
+            {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>最低 {level} 级</option>)}
+          </select>
+          <select
+            value={filters.maxDifficultyLevel}
+            onChange={event => setFilters(prev => ({ ...prev, maxDifficultyLevel: event.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">最高难度不限</option>
+            {[1, 2, 3, 4, 5].map(level => <option key={level} value={level}>最高 {level} 级</option>)}
+          </select>
+          <select
+            value={filters.questionType}
+            onChange={event => setFilters(prev => ({ ...prev, questionType: event.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">全部题型</option>
+            {QUESTION_TYPE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <select
+            value={filters.sourceType}
+            onChange={event => setFilters(prev => ({ ...prev, sourceType: event.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">全部来源</option>
+            <option value="KNOWLEDGE_BASE">知识库生成</option>
+            <option value="MANUAL">人工维护</option>
+            <option value="MOCK_INTERVIEW_GENERATED">模拟面试生成</option>
+            <option value="IMPORTED">导入</option>
+            <option value="SYSTEM_SEEDED">系统内置</option>
+            <option value="USER_CREATED">用户创建</option>
+          </select>
+          <select
+            value={filters.taggingStatus}
+            onChange={event => setFilters(prev => ({ ...prev, taggingStatus: event.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">全部标注状态</option>
+            <option value="VERIFIED">已确认</option>
+            <option value="REVIEW_REQUIRED">待审核</option>
+            <option value="LEGACY_UNTAGGED">历史未标注</option>
+          </select>
+          <select
+            value={filters.knowledgeCode}
+            onChange={event => setFilters(prev => ({ ...prev, knowledgeCode: event.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">全部知识点</option>
+            {knowledgeTagOptions.map(option => (
+              <option key={option.code} value={option.code}>{option.name} · {option.code}</option>
+            ))}
+          </select>
+          <select
+            value={filters.taxonomyVersion}
+            onChange={event => setFilters(prev => ({ ...prev, taxonomyVersion: event.target.value }))}
+            className={INPUT_CLASS}
+          >
+            <option value="">全部目录版本</option>
+            {Array.from(new Set(allQuestions.map(question => question.taxonomyVersion).filter((version): version is number => version != null)))
+              .sort((a, b) => b - a)
+              .map(version => <option key={version} value={version}>v{version}</option>)}
+          </select>
           <div className="flex gap-2">
             <button
               onClick={() => setFilters(EMPTY_FILTERS)}
@@ -545,6 +652,12 @@ export default function KnowledgeBaseInterviewQuestionsPage() {
           </div>
         </div>
       </div>
+      {filters.minDifficultyLevel && filters.maxDifficultyLevel
+          && Number(filters.minDifficultyLevel) > Number(filters.maxDifficultyLevel) && (
+        <p className="mb-4 text-sm text-amber-600 dark:text-amber-400">
+          难度范围下限不能高于上限。
+        </p>
+      )}
 
       {questions.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 mb-4 px-1">

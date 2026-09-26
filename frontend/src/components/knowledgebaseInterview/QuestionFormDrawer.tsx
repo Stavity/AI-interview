@@ -6,14 +6,20 @@ import type {
   SaveKnowledgeBaseQuestionRequest,
   KnowledgeBaseQuestionStatus,
 } from '../../api/knowledgebase';
+import QuestionKnowledgeTagPicker, { type QuestionTagOption } from './QuestionKnowledgeTagPicker';
 import {
   INPUT_CLASS,
   STATUS_OPTIONS,
   DIFFICULTY_OPTIONS,
+  QUESTION_TYPE_OPTIONS,
 } from '../../constants/knowledgebaseInterview';
 
 export interface QuestionFormState {
   difficulty: string;
+  difficultyLevel: string;
+  questionType: string;
+  primaryKnowledge: QuestionTagOption | null;
+  secondaryKnowledge: QuestionTagOption[];
   type: string;
   category: string;
   question: string;
@@ -31,6 +37,10 @@ export function emptyQuestionForm(
 ): QuestionFormState {
   return {
     difficulty: defaults?.difficulty || 'mid',
+    difficultyLevel: '',
+    questionType: '',
+    primaryKnowledge: null,
+    secondaryKnowledge: [],
     type: 'KNOWLEDGE_BASE',
     category: defaults?.category || '',
     question: '',
@@ -76,8 +86,16 @@ function textToFollowUps(value: string): KnowledgeBaseQuestionFollowUp[] {
 }
 
 export function formFromQuestion(question: KnowledgeBaseQuestion): QuestionFormState {
+  const tags = question.knowledgeTags ?? [];
+  const primaryTag = tags.find(tag => tag.relationType === 'PRIMARY');
   return {
     difficulty: question.difficulty,
+    difficultyLevel: question.difficultyLevel == null ? '' : String(question.difficultyLevel),
+    questionType: question.questionType || '',
+    primaryKnowledge: primaryTag ? { code: primaryTag.code, name: primaryTag.name } : null,
+    secondaryKnowledge: tags
+      .filter(tag => tag.relationType === 'SECONDARY')
+      .map(tag => ({ code: tag.code, name: tag.name })),
     type: question.type || '',
     category: question.category || '',
     question: question.question,
@@ -94,6 +112,10 @@ export function formFromQuestion(question: KnowledgeBaseQuestion): QuestionFormS
 export function buildQuestionPayload(form: QuestionFormState): SaveKnowledgeBaseQuestionRequest {
   return {
     difficulty: form.difficulty,
+    difficultyLevel: form.difficultyLevel ? Number(form.difficultyLevel) : null,
+    questionType: form.questionType || null,
+    primaryKnowledgeCode: form.primaryKnowledge?.code || null,
+    secondaryKnowledgeCodes: form.secondaryKnowledge.map(tag => tag.code),
     type: form.type.trim() || null,
     category: form.category.trim(),
     question: form.question.trim(),
@@ -165,6 +187,22 @@ export default function QuestionFormDrawer({
                 ))}
               </select>
             </Field>
+            <Field label="题目难度（1～5）">
+              <select value={form.difficultyLevel} onChange={event => onChange({ ...form, difficultyLevel: event.target.value })} className={INPUT_CLASS}>
+                <option value="">请选择</option>
+                {[1, 2, 3, 4, 5].map(level => (
+                  <option key={level} value={level}>{level} 级{level <= 2 ? ' · 基础' : level === 3 ? ' · 中等' : ' · 进阶'}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="题型">
+              <select value={form.questionType} onChange={event => onChange({ ...form, questionType: event.target.value })} className={INPUT_CLASS}>
+                <option value="">请选择</option>
+                {QUESTION_TYPE_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </Field>
             <Field label="状态">
               <select value={form.status} onChange={event => onChange({ ...form, status: event.target.value as KnowledgeBaseQuestionStatus })} className={INPUT_CLASS}>
                 {STATUS_OPTIONS.filter(option => option.value).map(option => (
@@ -190,6 +228,17 @@ export default function QuestionFormDrawer({
             )}
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
               可输入新方向，或从已有方向中选择。
+            </p>
+          </Field>
+          <Field label="知识点标签">
+            <QuestionKnowledgeTagPicker
+              primary={form.primaryKnowledge}
+              secondary={form.secondaryKnowledge}
+              onChange={(primaryKnowledge, secondaryKnowledge) =>
+                onChange({ ...form, primaryKnowledge, secondaryKnowledge })}
+            />
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              至少选择一个主知识点；可补充最多 4 个次知识点。目录标签不能由题目方向文本代替。
             </p>
           </Field>
           <Field label="题干">

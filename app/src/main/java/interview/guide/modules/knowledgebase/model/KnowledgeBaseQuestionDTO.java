@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.model;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import interview.guide.modules.questiontag.model.QuestionSourceRef;
 
 public record KnowledgeBaseQuestionDTO(
     Long id,
@@ -20,6 +21,15 @@ public record KnowledgeBaseQuestionDTO(
     String sourceContext,
     KnowledgeBaseQuestionStatus status,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    Integer difficultyLevel,
+    String questionType,
+    String primaryKnowledgeCode,
+    List<String> secondaryKnowledgeCodes,
+    List<KnowledgeBaseQuestionTagDTO> knowledgeTags,
+    String sourceType,
+    QuestionSourceRef sourceRef,
+    Integer taxonomyVersion,
+    String taggingStatus
 ) {
 }

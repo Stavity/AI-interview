@@ -55,6 +55,7 @@ public class QuestionTagCatalogSyncService {
   private final QuestionSkillKnowledgeScopeRepository scopeRepository;
 
   @EventListener(ApplicationReadyEvent.class)
+  @Transactional
   public void syncCatalogOnApplicationReady() {
     syncCatalog();
   }

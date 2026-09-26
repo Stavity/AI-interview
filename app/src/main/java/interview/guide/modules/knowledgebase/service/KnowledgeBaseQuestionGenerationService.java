@@ -15,6 +15,9 @@ import interview.guide.modules.knowledgebase.model.QuestionGenerationConfig;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository.CategoryCount;
+import interview.guide.modules.questiontag.model.QuestionSourceRef;
+import interview.guide.modules.questiontag.model.QuestionSourceType;
+import interview.guide.modules.questiontag.model.QuestionTaggingStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -233,6 +236,10 @@ public class KnowledgeBaseQuestionGenerationService {
       entity.setFollowUpsJson(writeFollowUps(dto.followUps(), followUpCount));
       entity.setSourceContext(sourceContext);
       entity.setKbContentHash(kb.getFileHash());
+      entity.setSourceType(QuestionSourceType.KNOWLEDGE_BASE);
+      entity.setSourceRefJson(writeSourceRef(
+          new QuestionSourceRef(kb.getId(), kb.getFileHash(), List.of(), kb.getName())));
+      entity.setTaggingStatus(QuestionTaggingStatus.REVIEW_REQUIRED);
       entity.setStatus(KnowledgeBaseQuestionStatus.DRAFT);
       entities.add(entity);
     }
@@ -354,6 +361,14 @@ public class KnowledgeBaseQuestionGenerationService {
       return objectMapper.writeValueAsString(sanitized);
     } catch (JacksonException e) {
       throw new BusinessException(ErrorCode.INTERNAL_ERROR, "序列化题目列表字段失败", e);
+    }
+  }
+
+  private String writeSourceRef(QuestionSourceRef sourceRef) {
+    try {
+      return objectMapper.writeValueAsString(sourceRef);
+    } catch (JacksonException e) {
+      throw new BusinessException(ErrorCode.INTERNAL_ERROR, "序列化知识库题目来源失败", e);
     }
   }
 

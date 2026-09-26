@@ -70,11 +70,25 @@ export default function QuestionCard({
             <Badge>{getStatusLabel(question.status)}</Badge>
             {question.category && <Badge>{question.category}</Badge>}
             <Badge>{getDifficultyLabel(question.difficulty)}</Badge>
+            {question.difficultyLevel != null && <Badge>{`知识难度 ${question.difficultyLevel}/5`}</Badge>}
+            {question.questionType && <Badge>{question.questionType}</Badge>}
+            <Badge tone={question.taggingStatus === 'VERIFIED' ? 'default' : 'warning'}>
+              {question.taggingStatus === 'VERIFIED' ? '标签已确认' : '待标签审核'}
+            </Badge>
             <Badge>{`${usableFollowUpCount} 个追问`}</Badge>
             {followUpQualityWarning && (
               <Badge tone="warning">{followUpQualityWarning}</Badge>
             )}
           </div>
+          {question.knowledgeTags?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {question.knowledgeTags.map(tag => (
+                <span key={tag.code} className="text-[11px] rounded-md bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 px-2 py-1" title={tag.code}>
+                  {tag.relationType === 'PRIMARY' ? '主 · ' : '次 · '}{tag.name}
+                </span>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => hasDetail && setExpanded(prev => !prev)}

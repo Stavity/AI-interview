@@ -214,11 +214,11 @@ public class KnowledgeBaseInterviewService {
   ) {
     List<QuestionKnowledgeTagEntity> tags = questionTagRepository
         .findByIdQuestionIdOrderByRelationTypeAscIdNodeCodeAsc(entity.getId());
-    String primaryCode = tags.stream()
+    QuestionKnowledgeTagEntity primaryTag = tags.stream()
         .filter(tag -> tag.getRelationType() == QuestionTagRelationType.PRIMARY)
-        .map(tag -> tag.getId().getNodeCode())
         .findFirst()
         .orElse(null);
+    String primaryCode = primaryTag == null ? null : primaryTag.getId().getNodeCode();
     List<String> secondaryCodes = tags.stream()
         .filter(tag -> tag.getRelationType() == QuestionTagRelationType.SECONDARY)
         .map(tag -> tag.getId().getNodeCode())
@@ -232,7 +232,9 @@ public class KnowledgeBaseInterviewService {
         entity.getSourceType() == null ? "KNOWLEDGE_BASE" : entity.getSourceType().name(),
         sourceRef,
         entity.getTaxonomyVersion(),
-        entity.getTaggingStatus() == null ? "LEGACY_UNTAGGED" : entity.getTaggingStatus().name()
+        entity.getTaggingStatus() == null ? "LEGACY_UNTAGGED" : entity.getTaggingStatus().name(),
+        primaryTag == null ? null : primaryTag.getTaggingSource().name(),
+        primaryTag == null ? null : primaryTag.getConfidence()
     );
   }
 

@@ -1,7 +1,9 @@
 package interview.guide.modules.interview.model;
 
 import java.util.List;
+import java.math.BigDecimal;
 import interview.guide.modules.questiontag.model.QuestionSourceRef;
+import interview.guide.modules.questiontag.model.QuestionTaggingSource;
 
 /**
  * 面试问题DTO
@@ -29,8 +31,24 @@ public record InterviewQuestionDTO(
     String sourceType,
     QuestionSourceRef sourceRef,
     Integer taxonomyVersion,
-    String taggingStatus
+    String taggingStatus,
+    String taggingSource,
+    BigDecimal tagConfidence
 ) {
+    public InterviewQuestionDTO(
+        int questionIndex, String question, String type, String category, String topicSummary,
+        String userAnswer, Integer score, String feedback, boolean isFollowUp,
+        Integer parentQuestionIndex, String referenceAnswer, List<String> keyPoints,
+        String scoringRubric, String sourceContext, Integer difficultyLevel, String questionType,
+        String primaryKnowledgeCode, List<String> secondaryKnowledgeCodes, String sourceType,
+        QuestionSourceRef sourceRef, Integer taxonomyVersion, String taggingStatus
+    ) {
+        this(questionIndex, question, type, category, topicSummary, userAnswer, score, feedback,
+            isFollowUp, parentQuestionIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
+            difficultyLevel, questionType, primaryKnowledgeCode, secondaryKnowledgeCodes, sourceType,
+            sourceRef, taxonomyVersion, taggingStatus, null, null);
+    }
+
     public InterviewQuestionDTO {
         secondaryKnowledgeCodes = secondaryKnowledgeCodes == null ? List.of() : List.copyOf(secondaryKnowledgeCodes);
         taggingStatus = taggingStatus == null ? "LEGACY_UNTAGGED" : taggingStatus;
@@ -65,7 +83,7 @@ public record InterviewQuestionDTO(
             questionIndex, question, type, category, topicSummary, answer, score, feedback,
             isFollowUp, parentQuestionIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
             difficultyLevel, questionType, primaryKnowledgeCode, secondaryKnowledgeCodes, sourceType,
-            sourceRef, taxonomyVersion, taggingStatus);
+            sourceRef, taxonomyVersion, taggingStatus, taggingSource, tagConfidence);
     }
 
     public InterviewQuestionDTO withEvaluation(int score, String feedback) {
@@ -73,7 +91,7 @@ public record InterviewQuestionDTO(
             questionIndex, question, type, category, topicSummary, userAnswer, score, feedback,
             isFollowUp, parentQuestionIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
             difficultyLevel, questionType, primaryKnowledgeCode, secondaryKnowledgeCodes, sourceType,
-            sourceRef, taxonomyVersion, taggingStatus);
+            sourceRef, taxonomyVersion, taggingStatus, taggingSource, tagConfidence);
     }
 
     public InterviewQuestionDTO withTagMetadata(
@@ -86,10 +104,44 @@ public record InterviewQuestionDTO(
         Integer version,
         String tagStatus
     ) {
+        return withTagMetadata(level, type, primaryCode, secondaryCodes, source, reference,
+            version, tagStatus,
+            primaryCode == null ? null : QuestionTaggingSource.LLM.name(), null);
+    }
+
+    public InterviewQuestionDTO withTagMetadata(
+        Integer level,
+        String type,
+        String primaryCode,
+        List<String> secondaryCodes,
+        String source,
+        QuestionSourceRef reference,
+        Integer version,
+        String tagStatus,
+        String tagSource,
+        BigDecimal confidence
+    ) {
         return new InterviewQuestionDTO(
             questionIndex, question, this.type, category, topicSummary, userAnswer, score, feedback,
             isFollowUp, parentQuestionIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
-            level, type, primaryCode, secondaryCodes, source, reference, version, tagStatus);
+            level, type, primaryCode, secondaryCodes, source, reference, version, tagStatus,
+            tagSource, confidence);
+    }
+
+    public InterviewQuestionDTO withBackfillTagMetadata(
+        String primaryCode, List<String> secondaryCodes, Integer version,
+        String tagStatus, String tagSource, BigDecimal confidence
+    ) {
+        return withTagMetadata(difficultyLevel, questionType, primaryCode, secondaryCodes, sourceType,
+            sourceRef, version, tagStatus, tagSource, confidence);
+    }
+
+    public InterviewQuestionDTO withTaggingProvenance(String tagSource, BigDecimal confidence) {
+        return new InterviewQuestionDTO(
+            questionIndex, question, type, category, topicSummary, userAnswer, score, feedback,
+            isFollowUp, parentQuestionIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
+            difficultyLevel, questionType, primaryKnowledgeCode, secondaryKnowledgeCodes, sourceType,
+            sourceRef, taxonomyVersion, taggingStatus, tagSource, confidence);
     }
 
     public InterviewQuestionDTO withQuestionIndex(int index, Integer parentIndex) {
@@ -97,6 +149,6 @@ public record InterviewQuestionDTO(
             index, question, type, category, topicSummary, userAnswer, score, feedback,
             isFollowUp, parentIndex, referenceAnswer, keyPoints, scoringRubric, sourceContext,
             difficultyLevel, questionType, primaryKnowledgeCode, secondaryKnowledgeCodes, sourceType,
-            sourceRef, taxonomyVersion, taggingStatus);
+            sourceRef, taxonomyVersion, taggingStatus, taggingSource, tagConfidence);
     }
 }

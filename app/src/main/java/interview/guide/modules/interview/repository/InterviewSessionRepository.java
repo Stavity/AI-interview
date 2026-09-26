@@ -5,7 +5,9 @@ import interview.guide.modules.interview.model.InterviewSessionEntity.SessionSta
 import interview.guide.modules.resume.model.ResumeEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,6 +18,23 @@ import java.util.Optional;
  */
 @Repository
 public interface InterviewSessionRepository extends JpaRepository<InterviewSessionEntity, Long> {
+
+    @Query(value = "SELECT * FROM interview_sessions "
+        + "WHERE id > :afterId AND status IN ('COMPLETED', 'EVALUATED') AND questions_json IS NOT NULL "
+        + "AND questions_json NOT LIKE '%\"taggingSource\":\"BACKFILLED\"%' "
+        + "ORDER BY id ASC",
+        nativeQuery = true)
+    List<InterviewSessionEntity> findBackfillCandidates(
+        @Param("afterId") Long afterId,
+        Pageable pageable);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE InterviewSessionEntity s SET s.questionsJson = :newJson "
+        + "WHERE s.id = :id AND s.questionsJson = :oldJson")
+    int updateQuestionsJsonIfUnchanged(
+        @Param("id") Long id,
+        @Param("oldJson") String oldJson,
+        @Param("newJson") String newJson);
 
     /**
      * 根据会话ID查找

@@ -5,6 +5,7 @@ import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator.Ta
 import interview.guide.modules.questiontag.service.QuestionTagQueryService.GenerationQueryResponse;
 import interview.guide.modules.questiontag.service.QuestionTagQueryService.GenerationQueryResult;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.DistributionSummary;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -204,6 +205,11 @@ public class QuestionKnowledgeTagToolCallbackFactory {
         }).toList();
         int invalidCount = (int) results.stream().filter(result -> !result.valid()).count();
         recordCall(definition.name(), "success", startedAt, false, invalidCount);
+        if (meterRegistry != null && !results.isEmpty()) {
+          DistributionSummary.builder("app.question_tag_tool.invalid_selection_rate")
+              .tag("tool", definition.name()).register(meterRegistry)
+              .record((double) invalidCount / results.size());
+        }
         return serialize(new ValidationResponse(scope.taxonomyVersion(), results));
       } catch (JacksonException e) {
         recordCall(definition.name(), "failure", startedAt, false, 0);

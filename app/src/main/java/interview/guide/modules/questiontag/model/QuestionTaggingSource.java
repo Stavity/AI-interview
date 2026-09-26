@@ -4,5 +4,6 @@ public enum QuestionTaggingSource {
   MANUAL,
   LLM,
   IMPORT,
-  LEGACY
+  LEGACY,
+  BACKFILLED
 }

@@ -963,6 +963,19 @@ GET /api/question-tags/{code}
 - 建立 REVIEW_REQUIRED 列表。
 - 增加目录覆盖率、无结果率和非法标签率监控。
 
+历史回填通过应用启动事件提供显式运维入口，默认不启用；启用后仍默认 dry-run。执行采用固定目录版本、按主键游标分页和逐批事务，面试快照使用原 JSON 比对更新，避免覆盖并发写入的答案或评分。可用配置如下：
+
+```properties
+app.question-tags.backfill.enabled=true
+app.question-tags.backfill.dry-run=true
+app.question-tags.backfill.batch-size=100
+app.question-tags.backfill.max-records=0
+app.question-tags.backfill.after-knowledge-base-id=0
+app.question-tags.backfill.after-session-id=0
+```
+
+`max-records=0` 表示处理全部候选记录；先用 dry-run 查看汇总和游标，再将 dry-run 显式设为 false 执行写入。若设置单次上限，日志游标可配置为下一次运行的起始 ID。每批独立提交，失败批回滚且已提交批保留。回填仅写知识标签元数据，不更新历史题干、作答、评分及会话更新时间；匹配分数是规则排序置信度，不是经过校准的统计概率。
+
 ### Phase 5：学习闭环
 
 - 将每题评分投影为标签学习证据。

@@ -2,14 +2,29 @@ package interview.guide.modules.knowledgebase.repository;
 
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionStatus;
+import interview.guide.modules.questiontag.model.QuestionTaggingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
 public interface KnowledgeBaseQuestionRepository extends JpaRepository<KnowledgeBaseQuestionEntity, Long> {
+
+  List<KnowledgeBaseQuestionEntity> findByTaggingStatusAndIdGreaterThanOrderByIdAsc(
+      QuestionTaggingStatus taggingStatus, Long afterId, Pageable pageable);
+
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query("UPDATE KnowledgeBaseQuestionEntity q SET q.taxonomyVersion = :version, "
+      + "q.taggingStatus = :taggingStatus WHERE q.id = :questionId "
+      + "AND q.taggingStatus = :expectedStatus")
+  int updateBackfillMetadata(
+      @Param("questionId") Long questionId,
+      @Param("version") Integer taxonomyVersion,
+      @Param("taggingStatus") QuestionTaggingStatus taggingStatus,
+      @Param("expectedStatus") QuestionTaggingStatus expectedStatus);
 
   List<KnowledgeBaseQuestionEntity> findByKnowledgeBase_IdOrderByUpdatedAtDesc(Long knowledgeBaseId);
 

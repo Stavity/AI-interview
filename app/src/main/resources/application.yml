@@ -10,6 +10,13 @@ server:
   port: 8080
   # 明确指定HTTP响应编码
   servlet:
+    session:
+      timeout: 8h
+      cookie:
+        name: INTERVIEW_GUIDE_SESSION
+        http-only: true
+        secure: ${APP_SESSION_COOKIE_SECURE:false}
+        same-site: lax
     encoding:
       charset: UTF-8
       enabled: true
@@ -66,6 +73,27 @@ spring:
     password: ${POSTGRES_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
 
+  # SMTP is required to activate public accounts and reset passwords.
+  mail:
+    host: ${APP_MAIL_HOST:localhost}
+    port: ${APP_MAIL_PORT:25}
+    username: ${APP_MAIL_USERNAME:}
+    password: ${APP_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${APP_MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${APP_MAIL_STARTTLS:false}
+            required: ${APP_MAIL_STARTTLS_REQUIRED:false}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+  session:
+    jdbc:
+      initialize-schema: never
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -116,6 +144,13 @@ spring:
 
 # Application custom configuration
 app:
+  auth:
+    frontend-base-url: ${APP_FRONTEND_BASE_URL:http://localhost:5173}
+    mail-enabled: ${APP_AUTH_MAIL_ENABLED:false}
+    mail-from: ${APP_AUTH_MAIL_FROM:no-reply@example.com}
+    session-cookie-secure: ${APP_SESSION_COOKIE_SECURE:false}
+    verification-token-ttl: 24h
+    password-reset-token-ttl: 30m
   tasks:
     consumer-enabled: ${TASK_CONSUMER_ENABLED:true}
     dispatcher-enabled: ${TASK_DISPATCHER_ENABLED:true}

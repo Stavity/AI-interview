@@ -14,6 +14,9 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -256,24 +259,16 @@ public class RateLimitAspect {
     }
 
     private String getCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null
+                && authentication.isAuthenticated()
+                && !(authentication instanceof AnonymousAuthenticationToken)) {
+            return authentication.getName();
+        }
+
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes == null) {
-            return "anonymous";
-        }
-
-        HttpServletRequest request = attributes.getRequest();
-
-        Object userId = request.getAttribute("userId");
-        if (userId != null) {
-            return userId.toString();
-        }
-
-        userId = request.getHeader("X-User-Id");
-        if (userId != null) {
-            return userId.toString();
-        }
-
-        return "anonymous";
+        if (attributes == null) return "anonymous";
+        return "anonymous:" + attributes.getRequest().getRemoteAddr();
     }
 
     private record RateLimitContext(RateLimit rule, String key) {

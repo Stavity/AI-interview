@@ -1,10 +1,11 @@
 import {Link, Outlet, useLocation, useNavigate} from 'react-router-dom';
 import {motion} from 'framer-motion';
-import {BookOpen, Calendar, ChevronRight, Database, FileStack, MessageSquare, Moon, Settings, Sparkles, Sun, Users,} from 'lucide-react';
+import {BookOpen, Calendar, ChevronRight, Database, FileStack, LogOut, MessageSquare, Moon, Settings, Sparkles, Sun, Users,} from 'lucide-react';
 import {useTheme} from '../hooks/useTheme';
 import {useState} from 'react';
 import UnifiedInterviewModal, {UnifiedInterviewConfig} from './UnifiedInterviewModal';
 import {ROUTES} from '../constants/routes';
+import {useAuth} from '../auth/AuthContext';
 
 interface NavItem {
   id: string;
@@ -25,6 +26,8 @@ export default function Layout() {
   const currentPath = location.pathname;
   const {theme, toggleTheme} = useTheme();
   const navigate = useNavigate();
+  const {user, signOut} = useAuth();
+  const [authActionError, setAuthActionError] = useState('');
   const [interviewModalPreset, setInterviewModalPreset] = useState<{
     defaultMode: 'text' | 'voice';
     defaultResumeId?: number;
@@ -78,6 +81,16 @@ export default function Layout() {
         },
       },
     });
+  };
+
+  const handleSignOut = async () => {
+    setAuthActionError('');
+    try {
+      await signOut();
+      navigate('/login', {replace: true});
+    } catch {
+      setAuthActionError('退出失败，请检查网络后重试');
+    }
   };
 
   // 按业务模块组织的导航项
@@ -225,6 +238,19 @@ export default function Layout() {
 
         {/* 底部信息 */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-700">
+          <div className="mb-3 flex items-center gap-3 px-2">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-sm font-semibold text-primary-700 dark:bg-primary-900/50 dark:text-primary-300">
+              {user?.displayName.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">{user?.displayName}</p>
+              <p className="truncate text-xs text-slate-400">{user?.email}</p>
+            </div>
+            <button onClick={() => void handleSignOut()} title="退出登录" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+          {authActionError && <p className="mb-2 text-xs text-rose-600">{authActionError}</p>}
           <div className="px-3 py-2 bg-gradient-to-r from-primary-50 to-indigo-50 dark:from-primary-900/30 dark:to-slate-800 rounded-xl">
             <p className="text-xs text-primary-600 dark:text-primary-400 font-medium">AI 面试助手 v1.0</p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Powered by AI</p>

@@ -3,6 +3,14 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 declare module 'axios' {
   interface AxiosRequestConfig {
     skipResultTransform?: boolean;
+    skipCsrf?: boolean;
+    csrfRetry?: boolean;
+  }
+
+  interface InternalAxiosRequestConfig {
+    skipResultTransform?: boolean;
+    skipCsrf?: boolean;
+    csrfRetry?: boolean;
   }
 }
 
@@ -23,6 +31,39 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 const instance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
+  withCredentials: true,
+});
+
+let csrfToken: string | null = null;
+let csrfRequest: Promise<string> | null = null;
+
+export function clearCsrfToken(): void {
+  csrfToken = null;
+  csrfRequest = null;
+}
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (!csrfRequest) {
+    csrfRequest = instance.get<{ token: string }>('/api/auth/csrf', { skipCsrf: true })
+      .then(response => {
+        csrfToken = response.data.token;
+        return csrfToken;
+      })
+      .finally(() => {
+        csrfRequest = null;
+      });
+  }
+  return csrfRequest;
+}
+
+instance.interceptors.request.use(async config => {
+  const method = (config.method || 'get').toLowerCase();
+  if (['post', 'put', 'patch', 'delete'].includes(method) && !config.skipCsrf) {
+    const token = await getCsrfToken();
+    config.headers.set('X-CSRF-TOKEN', token);
+  }
+  return config;
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,13 +135,15 @@ export async function resolveBlobDownload(blob: Blob): Promise<Blob> {
     : '文件下载失败：服务端未返回文件内容');
 }
 
-async function getErrorFromResponseData(data: unknown): Promise<Error | null> {
+async function getErrorFromResponseData(data: unknown, status?: number): Promise<Error | null> {
   const result = await parseResultPayload(data);
   if (!result) {
     return null;
   }
 
-  return new Error(result.message || '请求失败');
+  const error = new Error(result.message || '请求失败') as Error & { status?: number };
+  error.status = status;
+  return error;
 }
 
 /**
@@ -126,7 +169,9 @@ instance.interceptors.response.use(
         return response;
       }
       // 失败：直接抛出 message
-      return Promise.reject(new Error(result.message || '请求失败'));
+      const error = new Error(result.message || '请求失败') as Error & { status?: number };
+      error.status = response.status;
+      return Promise.reject(error);
     }
     
     // 非 Result 格式，直接返回
@@ -135,14 +180,25 @@ instance.interceptors.response.use(
   async (error) => {
     // 有响应的情况：后端返回了结果（即使是错误）
     if (error.response) {
+      const requestConfig = error.config as AxiosRequestConfig | undefined;
+      const method = requestConfig?.method?.toLowerCase();
+      const changesState = ['post', 'put', 'patch', 'delete'].includes(method || '');
+      if (error.response.status === 403 && changesState && requestConfig && !requestConfig.csrfRetry) {
+        clearCsrfToken();
+        requestConfig.csrfRetry = true;
+        return instance.request(requestConfig);
+      }
+
       const { data } = error.response;
       // 尝试解析 Result 格式
-      const responseError = await getErrorFromResponseData(data);
+      const responseError = await getErrorFromResponseData(data, error.response.status);
       if (responseError) {
         return Promise.reject(responseError);
       }
       // 响应格式不对
-      return Promise.reject(new Error('请求失败，请重试'));
+      const responseErrorWithoutBody = new Error('请求失败，请重试') as Error & { status?: number };
+      responseErrorWithoutBody.status = error.response.status;
+      return Promise.reject(responseErrorWithoutBody);
     }
 
     // 没有响应的情况：真正的网络错误或连接被重置
@@ -225,6 +281,12 @@ export function getErrorMessage(error: unknown): string {
     return error.message;
   }
   return '未知错误';
+}
+
+export function getErrorStatus(error: unknown): number | undefined {
+  return error instanceof Error && 'status' in error
+    ? (error as Error & { status?: number }).status
+    : undefined;
 }
 
 export default request;

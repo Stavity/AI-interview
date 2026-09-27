@@ -7,6 +7,9 @@ import type { Difficulty } from './components/UnifiedInterviewModal';
 import type { CategoryDTO } from './api/skill';
 import { Loader2 } from 'lucide-react';
 import { ROUTE_PATTERNS, ROUTES } from './constants/routes';
+import { AuthProvider } from './auth/AuthContext';
+import { RequireAuth } from './auth/RequireAuth';
+import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth/AuthPages';
 
 // Lazy load components
 const UploadPage = lazy(() => import('./pages/UploadPage'));
@@ -192,9 +195,15 @@ function InterviewWrapper() {
 function App() {
   return (
     <BrowserRouter>
-      <Suspense fallback={<Loading />}>
-        <Routes>
-          <Route path="/" element={<Layout />}>
+      <AuthProvider>
+        <Suspense fallback={<Loading />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
             {/* 默认重定向到简历管理页面 */}
             <Route index element={<Navigate to="/history" replace />} />
 
@@ -259,9 +268,9 @@ function App() {
             <Route path={ROUTES.learning.slice(1)} element={<LearningPage />} />
             <Route path={ROUTES.multiRound.slice(1)} element={<MultiRoundInterviewPage />} />
           </Route>
-
-        </Routes>
-      </Suspense>
+          </Routes>
+        </Suspense>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

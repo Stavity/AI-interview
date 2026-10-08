@@ -4,6 +4,7 @@ import interview.guide.modules.interview.model.InterviewSessionEntity;
 import interview.guide.modules.interview.repository.InterviewAnswerRepository;
 import interview.guide.modules.interview.repository.InterviewSessionRepository;
 import interview.guide.modules.resume.repository.ResumeRepository;
+import interview.guide.modules.learning.service.LearningEvidenceIngestionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,9 @@ class InterviewPersistenceServiceTest {
 
   @Mock
   private ResumeRepository resumeRepository;
+
+  @Mock
+  private LearningEvidenceIngestionService learningEvidenceIngestionService;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -73,7 +77,8 @@ class InterviewPersistenceServiceTest {
         sessionRepository,
         answerRepository,
         resumeRepository,
-        objectMapper
+        objectMapper,
+        learningEvidenceIngestionService
     );
   }
 }

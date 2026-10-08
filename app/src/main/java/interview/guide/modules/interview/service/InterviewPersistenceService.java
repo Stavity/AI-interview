@@ -13,6 +13,7 @@ import interview.guide.modules.interview.repository.InterviewAnswerRepository;
 import interview.guide.modules.interview.repository.InterviewSessionRepository;
 import interview.guide.modules.resume.model.ResumeEntity;
 import interview.guide.modules.resume.repository.ResumeRepository;
+import interview.guide.modules.learning.service.LearningEvidenceIngestionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * 面试持久化服务
@@ -39,6 +41,7 @@ public class InterviewPersistenceService {
     private final InterviewAnswerRepository answerRepository;
     private final ResumeRepository resumeRepository;
     private final ObjectMapper objectMapper;
+    private final LearningEvidenceIngestionService learningEvidenceIngestionService;
     
     /**
      * 保存新的面试会话（支持可选简历）
@@ -211,6 +214,11 @@ public class InterviewPersistenceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveReport(String sessionId, InterviewReportDTO report) {
+        saveReport(sessionId, report, null, 0L);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void saveReport(String sessionId, InterviewReportDTO report, UUID taskId, long evaluationVersion) {
         try {
             Optional<InterviewSessionEntity> sessionOpt = sessionRepository.findBySessionId(sessionId);
             if (sessionOpt.isEmpty()) {
@@ -279,9 +287,15 @@ public class InterviewPersistenceService {
                 answersToSave.add(answer);
             }
 
-            answerRepository.saveAll(answersToSave);
+            List<InterviewAnswerEntity> savedAnswers = answerRepository.saveAllAndFlush(answersToSave);
+            List<InterviewQuestionDTO> frozenQuestions = objectMapper.readValue(
+                session.getQuestionsJson(), new TypeReference<List<InterviewQuestionDTO>>() {});
+            int evidenceInserted = learningEvidenceIngestionService.persistTextInterviewEvidence(
+                sessionId, frozenQuestions, savedAnswers, report, taskId, evaluationVersion);
             log.info("面试报告已保存: sessionId={}, score={}, 答案数={}",
                 sessionId, report.overallScore(), answersToSave.size());
+            log.info("学习证据已写入: sessionId={}, inserted={}, evaluationVersion={}",
+                sessionId, evidenceInserted, evaluationVersion);
 
         } catch (JacksonException e) {
             log.error("序列化报告失败: {}", e.getMessage(), e);

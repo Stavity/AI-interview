@@ -33,7 +33,8 @@ public class InterviewEvaluateTaskHandler implements AsyncTaskHandler {
         List<InterviewQuestionDTO> questions = mapper.readValue(context.required("questions"), new TypeReference<List<InterviewQuestionDTO>>() {});
         var report = evaluation.evaluateInterview(providers.getChatClientOrDefault(context.required("provider")),
             context.businessId(), context.required("resume"), questions);
-        context.complete(() -> persistence.saveReport(context.businessId(), report));
+        context.complete(() -> persistence.saveReport(
+            context.businessId(), report, context.taskId(), context.executionVersion()));
     }
     public void updateStatus(String id, AsyncTaskState state, String error) {
         persistence.updateEvaluateStatus(id, TaskStatusMapping.legacy(state), error);

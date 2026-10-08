@@ -3,6 +3,7 @@ package interview.guide.common.async;
 import interview.guide.infrastructure.async.*;
 import interview.guide.infrastructure.kafka.KafkaTaskProperties;
 import interview.guide.common.transaction.TransactionalExecutor;
+import interview.guide.common.tenant.TenantContext;
 import org.junit.jupiter.api.*;
 import org.springframework.context.annotation.*;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
@@ -37,51 +38,55 @@ class AsyncTaskPersistenceTest {
     }
     @Test void businessRollbackAlsoRollsBackTaskAndOutbox() {
         assertThatThrownBy(() -> tx.run(() -> {
-            submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of("content", "input"));
+            submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of("content", "input"));
             throw new IllegalStateException("business rollback");
         })).isInstanceOf(IllegalStateException.class);
         assertThat(tasks.count()).isZero(); assertThat(outbox.count()).isZero();
     }
     @Test void committedTaskContainsSnapshotAndOnlyReferenceIsPublished() {
-        var id = submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of("content", "private text"));
+        var id = submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of("content", "private text"));
         assertThat(tasks.findById(id).orElseThrow().getInputPayload()).contains("private text");
         assertThat(outbox.findAll().getFirst().getPayload()).contains(id.toString()).doesNotContain("private text");
         assertThat(state.claim(event(id)).input()).containsEntry("content", "private text");
     }
     @Test void activeTaskCannotBeSubmittedAgain() {
-        submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
-        assertThatThrownBy(() -> submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of()))
+        submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
+        assertThatThrownBy(() -> submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of()))
             .isInstanceOf(interview.guide.common.exception.BusinessException.class);
         assertThat(tasks.count()).isEqualTo(1); assertThat(outbox.count()).isEqualTo(1);
     }
     @Test void resultFailureRollsBackCompletionAndAllowsRecovery() {
-        var id = submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
+        var id = submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
         var claim = state.claim(event(id));
         assertThatThrownBy(() -> state.complete(claim, () -> {
             // Simulate result writes using a row in the same database, then fail.
-            submission.submit(AsyncTaskType.RESUME_ANALYZE, "result-row", Map.of());
+            submit(AsyncTaskType.RESUME_ANALYZE, "result-row", Map.of());
             throw new IllegalStateException("result persistence failed");
         })).isInstanceOf(IllegalStateException.class);
         assertThat(tasks.count()).isEqualTo(1);
         assertThat(tasks.findById(id).orElseThrow().getState()).isEqualTo(AsyncTaskState.RUNNING);
     }
     @Test void successAndDuplicateDeliveryOnlyCommitOnce() {
-        var id = submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
+        var id = submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
         var claim = state.claim(event(id));
-        state.complete(claim, () -> submission.submit(AsyncTaskType.RESUME_ANALYZE, "result-row", Map.of()));
+        state.complete(claim, () -> submit(AsyncTaskType.RESUME_ANALYZE, "result-row", Map.of()));
         assertThat(state.claim(event(id))).isNull();
         assertThat(tasks.count()).isEqualTo(2);
         assertThat(tasks.findById(id).orElseThrow().getState()).isEqualTo(AsyncTaskState.SUCCEEDED);
         // A new user-requested generation can now use the same business key.
-        assertThat(submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of())).isNotEqualTo(id);
+        assertThat(submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of())).isNotEqualTo(id);
     }
     @Test void retryStateAndNotificationCommitTogether() {
-        var id = submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
+        var id = submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
         state.fail(state.claim(event(id)), true);
         assertThat(tasks.findById(id).orElseThrow().getState()).isEqualTo(AsyncTaskState.RETRY_WAIT);
         assertThat(outbox.count()).isEqualTo(2);
     }
     static TaskEnvelope event(UUID id) { return new TaskEnvelope(1, UUID.randomUUID(), id, AsyncTaskType.RESUME_ANALYZE, "1", Instant.now()); }
+
+    UUID submit(AsyncTaskType type, String businessId, Map<String, String> input) {
+        return TenantContext.callAs(1L, () -> submission.submit(type, businessId, input));
+    }
 
     @Configuration @EnableTransactionManagement
     @EnableJpaRepositories(basePackageClasses = AsyncTaskRepository.class)

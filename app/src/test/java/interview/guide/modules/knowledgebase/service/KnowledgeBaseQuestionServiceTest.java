@@ -7,6 +7,10 @@ import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionEntity;
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
+import interview.guide.modules.questiontag.repository.QuestionKnowledgeNodeRepository;
+import interview.guide.modules.questiontag.repository.QuestionKnowledgeTagRepository;
+import interview.guide.modules.questiontag.service.QuestionGenerationScopeFactory;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -32,6 +36,14 @@ class KnowledgeBaseQuestionServiceTest {
   private QuestionGenTaskSubmission questionGenTaskSubmission;
   @Mock
   private QuestionGenerationStateService questionGenerationStateService;
+  @Mock
+  private QuestionKnowledgeTagRepository questionTagRepository;
+  @Mock
+  private QuestionKnowledgeNodeRepository knowledgeNodeRepository;
+  @Mock
+  private QuestionKnowledgeValidator questionKnowledgeValidator;
+  @Mock
+  private QuestionGenerationScopeFactory questionGenerationScopeFactory;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
   private KnowledgeBaseQuestionService service;
@@ -43,7 +55,11 @@ class KnowledgeBaseQuestionServiceTest {
         questionRepository,
         objectMapper,
         questionGenTaskSubmission,
-        questionGenerationStateService
+        questionGenerationStateService,
+        questionTagRepository,
+        knowledgeNodeRepository,
+        questionKnowledgeValidator,
+        questionGenerationScopeFactory
     );
   }
 
@@ -60,7 +76,8 @@ class KnowledgeBaseQuestionServiceTest {
           .thenReturn(List.of(redis, jvm));
 
       List<KnowledgeBaseQuestionDTO> result =
-          service.listQuestions(1L, null, "Redis", null, null);
+          service.listQuestions(1L, null, "Redis", null, null,
+              null, null, null, null, null, null, null);
 
       assertThat(result).hasSize(1);
       assertThat(result.get(0).category()).isEqualTo("Redis");
@@ -73,7 +90,8 @@ class KnowledgeBaseQuestionServiceTest {
           .thenReturn(List.of(entity("Q1", "JVM"), entity("Q2", "Redis")));
 
       List<KnowledgeBaseQuestionDTO> result =
-          service.listQuestions(1L, null, "  ", null, null);
+          service.listQuestions(1L, null, "  ", null, null,
+              null, null, null, null, null, null, null);
 
       assertThat(result).hasSize(2);
     }
@@ -87,7 +105,8 @@ class KnowledgeBaseQuestionServiceTest {
           .thenReturn(List.of(question));
 
       List<KnowledgeBaseQuestionDTO> result =
-          service.listQuestions(1L, null, null, null, null);
+          service.listQuestions(1L, null, null, null, null,
+              null, null, null, null, null, null, null);
 
       assertThat(result.get(0).followUps()).hasSize(1);
       assertThat(result.get(0).followUps().get(0).question()).isEqualTo("追问1");

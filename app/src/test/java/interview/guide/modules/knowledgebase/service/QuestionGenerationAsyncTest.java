@@ -16,6 +16,15 @@ import interview.guide.modules.knowledgebase.model.VectorStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
 import interview.guide.infrastructure.redis.RedisService;
+import interview.guide.modules.questiontag.model.QuestionSourceType;
+import interview.guide.modules.questiontag.model.QuestionType;
+import interview.guide.modules.questiontag.repository.QuestionKnowledgeNodeRepository;
+import interview.guide.modules.questiontag.repository.QuestionKnowledgeTagRepository;
+import interview.guide.modules.questiontag.service.QuestionGenerationScope;
+import interview.guide.modules.questiontag.service.QuestionGenerationScopeFactory;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeTagToolCallbackFactory;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator;
+import interview.guide.modules.questiontag.service.QuestionKnowledgeValidator.TagSelection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -38,6 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -79,6 +89,16 @@ class QuestionGenerationAsyncTest {
   private RedisService redisService;
   @Mock
   private ChatClient chatClient;
+  @Mock
+  private QuestionKnowledgeTagRepository questionTagRepository;
+  @Mock
+  private QuestionKnowledgeNodeRepository knowledgeNodeRepository;
+  @Mock
+  private QuestionKnowledgeValidator questionKnowledgeValidator;
+  @Mock
+  private QuestionGenerationScopeFactory scopeFactory;
+  @Mock
+  private QuestionKnowledgeTagToolCallbackFactory tagToolFactory;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
   private KnowledgeBaseQuestionService questionService;
@@ -90,6 +110,7 @@ class QuestionGenerationAsyncTest {
     stateService = new QuestionGenerationStateService(
         knowledgeBaseRepository,
         questionRepository,
+        questionTagRepository,
         objectMapper
     );
 
@@ -98,7 +119,11 @@ class QuestionGenerationAsyncTest {
         questionRepository,
         objectMapper,
         questionGenTaskSubmission,
-        stateService
+        stateService,
+        questionTagRepository,
+        knowledgeNodeRepository,
+        questionKnowledgeValidator,
+        scopeFactory
     );
 
     generationService = new KnowledgeBaseQuestionGenerationService(
@@ -109,8 +134,37 @@ class QuestionGenerationAsyncTest {
         structuredOutputInvoker,
         promptSanitizer,
         stateService,
+        scopeFactory,
+        tagToolFactory,
+        questionKnowledgeValidator,
         objectMapper
     );
+
+    QuestionGenerationScope scope = new QuestionGenerationScope(
+        KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID,
+        QuestionSourceType.KNOWLEDGE_BASE,
+        1,
+        Set.of("TECH_KNOWLEDGE"),
+        8
+    );
+    lenient().when(scopeFactory.snapshotOrCurrent(
+        eq(KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID),
+        eq(QuestionSourceType.KNOWLEDGE_BASE),
+        nullable(Integer.class),
+        nullable(List.class)
+    )).thenReturn(scope);
+    lenient().when(scopeFactory.current(
+        KnowledgeBaseQuestionEntity.DEFAULT_SKILL_ID,
+        QuestionSourceType.KNOWLEDGE_BASE
+    )).thenReturn(scope);
+    lenient().when(tagToolFactory.create(scope)).thenReturn(List.of());
+    lenient().when(questionKnowledgeValidator.validateQuestionGenerationSelection(
+        anyInt(), any(), nullable(String.class), nullable(List.class)
+    )).thenReturn(new TagSelection(1, "TECH_KNOWLEDGE", List.of()));
+    lenient().when(questionKnowledgeValidator.requireDifficultyLevel(nullable(Integer.class)))
+        .thenReturn(3);
+    lenient().when(questionKnowledgeValidator.requireQuestionType(nullable(String.class)))
+        .thenReturn(QuestionType.CONCEPT);
 
     // 注入 @Value 字段
     Resource systemResource = new ClassPathResource("prompts/knowledgebase-question-generation-system.st");
@@ -282,14 +336,16 @@ class QuestionGenerationAsyncTest {
       when(questionRepository.findTop20ByKnowledgeBase_IdAndDifficultyOrderByUpdatedAtDesc(1L, "mid"))
           .thenReturn(List.of());
       when(questionRepository.deleteByKnowledgeBaseId(1L)).thenReturn(3);
-      when(questionRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+      when(questionRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
       stubInvokerForGeneration(new KnowledgeBaseQuestionGenerationService.QuestionListDTO(List.of(
           new KnowledgeBaseQuestionGenerationService.QuestionDTO(
               "Redis", null, "什么是Redis", "摘要", "参考答案",
-              List.of("要点"), "规则", List.of()),
+              List.of("要点"), "规则", List.of(),
+              "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT"),
           new KnowledgeBaseQuestionGenerationService.QuestionDTO(
               "JVM", null, "什么是JVM", "摘要", "参考答案",
-              List.of("要点"), "规则", List.of())
+              List.of("要点"), "规则", List.of(),
+              "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT")
       )));
 
       generationService.executeGeneration(
@@ -300,7 +356,7 @@ class QuestionGenerationAsyncTest {
       // 验证批量保存
       ArgumentCaptor<List<KnowledgeBaseQuestionEntity>> captor =
           ArgumentCaptor.forClass(List.class);
-      verify(questionRepository).saveAll(captor.capture());
+      verify(questionRepository).saveAllAndFlush(captor.capture());
       assertThat(captor.getValue()).hasSize(2);
     }
 
@@ -314,7 +370,7 @@ class QuestionGenerationAsyncTest {
       when(questionRepository.findCategoryCounts(1L)).thenReturn(List.of());
       when(questionRepository.findTop20ByKnowledgeBase_IdAndDifficultyOrderByUpdatedAtDesc(1L, "mid"))
           .thenReturn(List.of());
-      when(questionRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+      when(questionRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
       stubInvokerForGeneration(new KnowledgeBaseQuestionGenerationService.QuestionListDTO(List.of(
           new KnowledgeBaseQuestionGenerationService.QuestionDTO(
               "Redis", null, "追问过多的题目", "摘要", "参考答案",
@@ -322,12 +378,12 @@ class QuestionGenerationAsyncTest {
                   new KnowledgeBaseQuestionFollowUpDTO("追问1"),
                   new KnowledgeBaseQuestionFollowUpDTO("追问2"),
                   new KnowledgeBaseQuestionFollowUpDTO("追问3")
-              )),
+              ), "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT"),
           new KnowledgeBaseQuestionGenerationService.QuestionDTO(
               "JVM", null, "追问不足的题目", "摘要", "参考答案",
               List.of("要点"), "规则", List.of(
                   new KnowledgeBaseQuestionFollowUpDTO("唯一追问")
-              ))
+              ), "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT")
       )));
 
       generationService.executeGeneration(
@@ -335,7 +391,7 @@ class QuestionGenerationAsyncTest {
 
       ArgumentCaptor<List<KnowledgeBaseQuestionEntity>> captor =
           ArgumentCaptor.forClass(List.class);
-      verify(questionRepository).saveAll(captor.capture());
+      verify(questionRepository).saveAllAndFlush(captor.capture());
       List<KnowledgeBaseQuestionEntity> saved = captor.getValue();
       TypeReference<List<KnowledgeBaseQuestionFollowUpDTO>> type = new TypeReference<>() {
       };
@@ -370,7 +426,7 @@ class QuestionGenerationAsyncTest {
           .hasMessageContaining("LLM调用超时");
 
       // 不应保存任何问题
-      verify(questionRepository, never()).saveAll(anyList());
+      verify(questionRepository, never()).saveAllAndFlush(anyList());
     }
 
     @Test
@@ -384,7 +440,7 @@ class QuestionGenerationAsyncTest {
           1L, "old-task", new QuestionGenerationConfig("mid", 5, 2, 3, null));
 
       verify(questionRepository, never()).deleteByKnowledgeBaseId(any());
-      verify(questionRepository, never()).saveAll(anyList());
+      verify(questionRepository, never()).saveAllAndFlush(anyList());
     }
 
     @Test
@@ -405,7 +461,8 @@ class QuestionGenerationAsyncTest {
             return new KnowledgeBaseQuestionGenerationService.QuestionListDTO(List.of(
                 new KnowledgeBaseQuestionGenerationService.QuestionDTO(
                     "Redis", null, "什么是Redis", "摘要", "参考答案",
-                    List.of("要点"), "规则", List.of())
+                    List.of("要点"), "规则", List.of(),
+                    "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT")
             ));
           });
 
@@ -414,7 +471,7 @@ class QuestionGenerationAsyncTest {
           .isInstanceOf(IllegalStateException.class);
 
       verify(questionRepository, never()).deleteByKnowledgeBaseId(any());
-      verify(questionRepository, never()).saveAll(anyList());
+      verify(questionRepository, never()).saveAllAndFlush(anyList());
     }
 
     @Test
@@ -427,14 +484,16 @@ class QuestionGenerationAsyncTest {
       when(questionRepository.findCategoryCounts(1L)).thenReturn(List.of());
       when(questionRepository.findTop20ByKnowledgeBase_IdAndDifficultyOrderByUpdatedAtDesc(1L, "mid"))
           .thenReturn(List.of());
-      when(questionRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+      when(questionRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
       stubInvokerForGeneration(new KnowledgeBaseQuestionGenerationService.QuestionListDTO(List.of(
           new KnowledgeBaseQuestionGenerationService.QuestionDTO(
               " ", null, "什么是依赖注入", "摘要", "参考答案",
-              List.of("要点"), "规则", List.of()),
+              List.of("要点"), "规则", List.of(),
+              "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT"),
           new KnowledgeBaseQuestionGenerationService.QuestionDTO(
               "Spring", null, "什么是 依赖注入", "摘要", "参考答案",
-              List.of("要点"), "规则", List.of())
+              List.of("要点"), "规则", List.of(),
+              "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT")
       )));
 
       generationService.executeGeneration(
@@ -442,7 +501,7 @@ class QuestionGenerationAsyncTest {
 
       ArgumentCaptor<List<KnowledgeBaseQuestionEntity>> captor =
           ArgumentCaptor.forClass(List.class);
-      verify(questionRepository).saveAll(captor.capture());
+      verify(questionRepository).saveAllAndFlush(captor.capture());
       assertThat(captor.getValue()).hasSize(1);
       assertThat(captor.getValue().get(0).getCategory()).isEqualTo("测试知识库");
       assertThat(kb.getQuestionGenSkippedCount()).isEqualTo(1);
@@ -463,11 +522,12 @@ class QuestionGenerationAsyncTest {
       existing.setQuestion("已有的 JVM 问题");
       when(questionRepository.findTop20ByKnowledgeBase_IdAndDifficultyOrderByUpdatedAtDesc(1L, "mid"))
           .thenReturn(List.of(existing));
-      when(questionRepository.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+      when(questionRepository.saveAllAndFlush(anyList())).thenAnswer(inv -> inv.getArgument(0));
       stubInvokerForGeneration(new KnowledgeBaseQuestionGenerationService.QuestionListDTO(List.of(
           new KnowledgeBaseQuestionGenerationService.QuestionDTO(
               "JVM", null, "什么是内存模型", "摘要", "参考答案",
-              List.of("要点"), "规则", List.of())
+              List.of("要点"), "规则", List.of(),
+              "TECH_KNOWLEDGE", List.of(), 3, "CONCEPT")
       )));
 
       generationService.executeGeneration(

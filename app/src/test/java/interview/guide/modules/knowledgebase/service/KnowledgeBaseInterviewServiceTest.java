@@ -14,6 +14,7 @@ import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionFollowUp
 import interview.guide.modules.knowledgebase.model.KnowledgeBaseQuestionStatus;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseQuestionRepository;
 import interview.guide.modules.knowledgebase.repository.KnowledgeBaseRepository;
+import interview.guide.modules.questiontag.repository.QuestionKnowledgeTagRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +45,9 @@ class KnowledgeBaseInterviewServiceTest {
 
   @Mock
   private InterviewSessionService interviewSessionService;
+
+  @Mock
+  private QuestionKnowledgeTagRepository questionTagRepository;
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -266,7 +270,8 @@ class KnowledgeBaseInterviewServiceTest {
         knowledgeBaseRepository,
         questionRepository,
         interviewSessionService,
-        objectMapper
+        objectMapper,
+        questionTagRepository
     );
   }
 

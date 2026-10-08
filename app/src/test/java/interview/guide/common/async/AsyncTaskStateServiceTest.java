@@ -40,17 +40,20 @@ class AsyncTaskStateServiceTest {
         assertThat(claim.input()).containsEntry("content", "snapshot");
         assertThat(task.getAttemptCount()).isEqualTo(1);
         assertThat(service.claim(event)).isNull();
-        verify(handler, times(1)).updateStatus("42", AsyncTaskState.RUNNING, null);
+        verify(handler, never()).updateStatus(any(), any(), any());
     }
     @Test void rejectsMismatchedEnvelope() {
         assertThatThrownBy(() -> service.claim(new TaskEnvelope(1, event.eventId(), event.taskId(),
             AsyncTaskType.RESUME_ANALYZE, "99", Instant.now()))).isInstanceOf(IllegalArgumentException.class);
     }
-    @Test void deletedBusinessCancelsWithoutExecution() {
+    @Test void deletedBusinessCancelsBeforeResultPersistence() {
+        var claim = service.claim(event);
         when(handler.isCurrent(task.getId(), "42")).thenReturn(false);
-        assertThat(service.claim(event)).isNull();
+        var write = mock(Runnable.class);
+        service.complete(claim, write);
         assertThat(task.getState()).isEqualTo(AsyncTaskState.CANCELLED);
         assertThat(task.getActiveKey()).isNull();
+        verifyNoInteractions(write);
     }
     @Test void completionPreventsReplay() {
         var claim = service.claim(event); var write = mock(Runnable.class);

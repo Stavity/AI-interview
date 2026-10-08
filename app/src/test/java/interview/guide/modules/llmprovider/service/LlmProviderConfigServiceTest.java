@@ -7,6 +7,8 @@ import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
 import interview.guide.modules.llmprovider.dto.DefaultProviderDTO;
 import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
+import interview.guide.modules.auth.model.UserRole;
+import interview.guide.modules.auth.security.AuthenticatedUser;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
@@ -18,6 +20,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.api.AfterEach;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -54,6 +59,11 @@ class LlmProviderConfigServiceTest {
 
     @BeforeEach
     void setUp(@TempDir Path tempDir) throws IOException {
+        AuthenticatedUser administrator = new AuthenticatedUser(1L, java.util.UUID.randomUUID(),
+            "admin@example.com", "Admin", UserRole.ADMIN);
+        SecurityContextHolder.getContext().setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated(
+                administrator, "test", administrator.getAuthorities()));
         Path tempYaml = tempDir.resolve("application.yml");
         Path tempEnv = tempDir.resolve(".env");
         Files.writeString(tempYaml, """
@@ -73,6 +83,11 @@ class LlmProviderConfigServiceTest {
             asrService,
             ttsService
         );
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @Nested

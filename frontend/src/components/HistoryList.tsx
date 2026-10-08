@@ -176,15 +176,21 @@ export default function HistoryList({ onSelectResume }: HistoryListProps) {
   }, [resumes, loading, loadDataSilent]);
 
   // 下载简历
-  const handleDownload = (resume: ResumeListItem, e: React.MouseEvent) => {
+  const handleDownload = async (resume: ResumeListItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (resume.storageUrl) {
+    if (!resume.downloadUrl) return;
+    try {
+      const blob = await historyApi.downloadResume(resume.id);
+      const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = resume.storageUrl;
+      link.href = objectUrl;
       link.download = resume.filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    } catch (error) {
+      console.error('简历下载失败', error);
     }
   };
 
@@ -397,7 +403,7 @@ export default function HistoryList({ onSelectResume }: HistoryListProps) {
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {/* 下载按钮 */}
-                        {resume.storageUrl && (
+                        {resume.downloadUrl && (
                           <button
                             onClick={(e) => handleDownload(resume, e)}
                             className="p-2 text-slate-400 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition-colors"

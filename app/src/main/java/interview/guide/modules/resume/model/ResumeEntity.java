@@ -2,6 +2,7 @@ package interview.guide.modules.resume.model;
 
 import interview.guide.common.model.AsyncTaskStatus;
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.LocalDateTime;
 
@@ -11,16 +12,20 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "resumes", indexes = {
-    @Index(name = "idx_resume_hash", columnList = "fileHash", unique = true)
+    @Index(name = "uq_resumes_owner_file_hash", columnList = "owner_user_id,file_hash", unique = true)
 })
 public class ResumeEntity {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @TenantId
+    @Column(name = "owner_user_id", nullable = false, updatable = false)
+    private Long ownerUserId;
     
     // 文件内容的SHA-256哈希值，用于去重
-    @Column(nullable = false, unique = true, length = 64)
+    @Column(nullable = false, length = 64)
     private String fileHash;
     
     // 原始文件名

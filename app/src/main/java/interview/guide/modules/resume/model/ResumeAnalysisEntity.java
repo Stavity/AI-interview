@@ -1,6 +1,7 @@
 package interview.guide.modules.resume.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.LocalDateTime;
 
@@ -15,6 +16,10 @@ public class ResumeAnalysisEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @TenantId
+    @Column(name = "owner_user_id", nullable = false, updatable = false)
+    private Long ownerUserId;
     
     // 关联的简历
     @ManyToOne(fetch = FetchType.LAZY)

@@ -1,6 +1,7 @@
 package interview.guide.modules.chat.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,6 +15,7 @@ import lombok.Setter;
 public class ChatSessionEntity {
   public enum Status { ACTIVE, ARCHIVED }
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+  @TenantId @Column(name = "owner_user_id", nullable = false, updatable = false) private Long ownerUserId;
   @Column(nullable = false) private String title;
   @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private Status status = Status.ACTIVE;
   @Column(name = "is_pinned", nullable = false) private boolean pinned;

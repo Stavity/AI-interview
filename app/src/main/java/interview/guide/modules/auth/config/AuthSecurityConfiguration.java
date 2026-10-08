@@ -3,6 +3,7 @@ package interview.guide.modules.auth.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.result.Result;
+import interview.guide.common.tenant.AuthenticatedTenantContextFilter;
 import interview.guide.modules.auth.security.EmailPasswordAuthenticationProvider;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
@@ -17,6 +18,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.logout.HttpStatusReturningLogoutSuccessHandler;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -73,6 +75,7 @@ public class AuthSecurityConfiguration {
                                             SecurityContextRepository securityContextRepository,
                                             CsrfTokenRepository csrfTokenRepository,
                                             CorsConfigurationSource corsConfigurationSource,
+                                            AuthenticatedTenantContextFilter authenticatedTenantContextFilter,
                                             ObjectMapper objectMapper) throws Exception {
         http
                 .authenticationProvider(authenticationProvider)
@@ -105,7 +108,8 @@ public class AuthSecurityConfiguration {
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
                         .deleteCookies("INTERVIEW_GUIDE_SESSION")
-                        .logoutSuccessHandler(new HttpStatusReturningLogoutSuccessHandler(HttpStatus.NO_CONTENT)));
+                        .logoutSuccessHandler(new HttpStatusReturningLogoutSuccessHandler(HttpStatus.NO_CONTENT)))
+                .addFilterAfter(authenticatedTenantContextFilter, AnonymousAuthenticationFilter.class);
 
         return http.build();
     }

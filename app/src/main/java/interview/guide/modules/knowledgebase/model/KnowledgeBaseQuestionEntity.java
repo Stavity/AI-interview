@@ -14,11 +14,14 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.TenantId;
 import interview.guide.modules.questiontag.model.QuestionSourceType;
 import interview.guide.modules.questiontag.model.QuestionTaggingStatus;
 import interview.guide.modules.questiontag.model.QuestionType;
 
 import java.time.LocalDateTime;
+import java.sql.Types;
 
 @Entity
 @Table(name = "knowledge_base_questions", indexes = {
@@ -30,6 +33,10 @@ public class KnowledgeBaseQuestionEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  @TenantId
+  @Column(name = "owner_user_id", nullable = false, updatable = false)
+  private Long ownerUserId;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "knowledge_base_id", nullable = false)
@@ -55,6 +62,7 @@ public class KnowledgeBaseQuestionEntity {
   private String category;
 
   @Column(name = "difficulty_level")
+  @JdbcTypeCode(Types.SMALLINT)
   private Integer difficultyLevel;
 
   @Enumerated(EnumType.STRING)

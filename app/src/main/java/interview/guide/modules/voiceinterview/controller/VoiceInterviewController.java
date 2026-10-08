@@ -116,11 +116,10 @@ public class VoiceInterviewController {
      */
     @GetMapping("/sessions")
     public Result<List<SessionMetaDTO>> getAllSessions(
-        @RequestParam(required = false) String userId,
         @RequestParam(required = false) String status
     ) {
-        log.info("Getting sessions for user: {}, status: {}", userId, status);
-        List<SessionMetaDTO> sessions = voiceInterviewService.getAllSessions(userId, status);
+        log.info("Getting sessions for current account, status: {}", status);
+        List<SessionMetaDTO> sessions = voiceInterviewService.getAllSessions(status);
         return Result.success(sessions);
     }
 

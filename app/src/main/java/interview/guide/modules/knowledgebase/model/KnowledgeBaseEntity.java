@@ -1,6 +1,7 @@
 package interview.guide.modules.knowledgebase.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.LocalDateTime;
 
@@ -9,7 +10,7 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "knowledge_bases", indexes = {
-    @Index(name = "idx_kb_hash", columnList = "fileHash", unique = true),
+    @Index(name = "uq_knowledge_bases_owner_file_hash", columnList = "owner_user_id,file_hash", unique = true),
     @Index(name = "idx_kb_category", columnList = "category")
 })
 public class KnowledgeBaseEntity {
@@ -18,8 +19,12 @@ public class KnowledgeBaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @TenantId
+    @Column(name = "owner_user_id", nullable = false, updatable = false)
+    private Long ownerUserId;
+
     // 文件内容的SHA-256哈希值，用于去重
-    @Column(nullable = false, unique = true, length = 64)
+    @Column(nullable = false, length = 64)
     private String fileHash;
 
     // 知识库名称（用户自定义或从文件名提取）

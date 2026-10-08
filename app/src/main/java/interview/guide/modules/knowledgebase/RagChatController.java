@@ -1,6 +1,7 @@
 package interview.guide.modules.knowledgebase;
 
 import interview.guide.common.result.Result;
+import interview.guide.common.tenant.TenantContext;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.CreateSessionRequest;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SendMessageRequest;
 import interview.guide.modules.knowledgebase.model.RagChatDTO.SessionDTO;
@@ -116,6 +117,7 @@ public class RagChatController {
     public Flux<ServerSentEvent<String>> sendMessageStream(
             @PathVariable Long sessionId,
             @Valid @RequestBody SendMessageRequest request) {
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
 
         log.info("收到 RAG 聊天流式请求: sessionId={}, question={}, 线程: {} (虚拟线程: {})",
             sessionId, request.question(), Thread.currentThread(), Thread.currentThread().isVirtual());
@@ -134,7 +136,8 @@ public class RagChatController {
                 .build())
             .doOnComplete(() -> {
                 // 3. 流式完成后更新消息内容
-                sessionService.completeStreamMessage(messageId, fullContent.toString());
+                TenantContext.runAs(ownerUserId,
+                    () -> sessionService.completeStreamMessage(messageId, fullContent.toString()));
                 log.info("RAG 聊天流式完成: sessionId={}, messageId={}", sessionId, messageId);
             })
             .doOnError(e -> {
@@ -142,7 +145,8 @@ public class RagChatController {
                 String content = !fullContent.isEmpty()
                     ? fullContent.toString()
                     : "【错误】回答生成失败：" + e.getMessage();
-                sessionService.completeStreamMessage(messageId, content);
+                TenantContext.runAs(ownerUserId,
+                    () -> sessionService.completeStreamMessage(messageId, content));
                 log.error("RAG 聊天流式错误: sessionId={}", sessionId, e);
             });
     }

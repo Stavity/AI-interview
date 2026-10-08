@@ -3,6 +3,7 @@ package interview.guide.infrastructure.file;
 import interview.guide.common.config.StorageConfigProperties;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.tenant.TenantContext;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -108,7 +109,8 @@ public class FileStorageService {
      */
     private String uploadFile(MultipartFile file, String prefix) {
         String originalFilename = file.getOriginalFilename();
-        String fileKey = generateFileKey(originalFilename, prefix);
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
+        String fileKey = generateFileKey(originalFilename, "users/" + ownerUserId + "/" + prefix);
 
         try {
             PutObjectRequest putRequest = PutObjectRequest.builder()

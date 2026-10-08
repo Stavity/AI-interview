@@ -3,6 +3,7 @@ package interview.guide.common.async;
 import interview.guide.infrastructure.async.*;
 import interview.guide.infrastructure.kafka.*;
 import interview.guide.common.transaction.TransactionalExecutor;
+import interview.guide.common.tenant.TenantContext;
 import org.junit.jupiter.api.*;
 import org.springframework.context.annotation.*;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -63,7 +64,8 @@ class KafkaTaskIntegrationTest {
         var submission = context.getBean(AsyncTaskSubmissionService.class);
         var tasks = context.getBean(AsyncTaskRepository.class);
         var rows = context.getBean(TaskOutboxRepository.class);
-        UUID id = submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of("content", "private snapshot"));
+        UUID id = TenantContext.callAs(1L,
+            () -> submission.submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of("content", "private snapshot")));
         var message = rows.findAll().getFirst();
         var consumerFactory = new DefaultKafkaConsumerFactory<String, String>(Map.of(
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers(),
@@ -90,7 +92,8 @@ class KafkaTaskIntegrationTest {
     @Test void postgresRecoveryFencesOldWorkerAndCreatesDurableRetry() {
         var tasks = context.getBean(AsyncTaskRepository.class);
         var state = context.getBean(AsyncTaskStateService.class);
-        var id = context.getBean(AsyncTaskSubmissionService.class).submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
+        var id = TenantContext.callAs(1L, () -> context.getBean(AsyncTaskSubmissionService.class)
+            .submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of()));
         var claim = state.claim(AsyncTaskPersistenceTest.event(id));
         jdbc.update("update async_task set lease_until = CURRENT_TIMESTAMP - INTERVAL '5 minutes' where id = ?", id);
         state.recover();
@@ -101,7 +104,8 @@ class KafkaTaskIntegrationTest {
     }
     @Test void concurrentClaimsOnlyStartOneWorker() throws Exception {
         var state = context.getBean(AsyncTaskStateService.class);
-        var id = context.getBean(AsyncTaskSubmissionService.class).submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of());
+        var id = TenantContext.callAs(1L, () -> context.getBean(AsyncTaskSubmissionService.class)
+            .submit(AsyncTaskType.RESUME_ANALYZE, "1", Map.of()));
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var futures = executor.invokeAll(List.of(
                 () -> state.claim(AsyncTaskPersistenceTest.event(id)),
@@ -121,6 +125,7 @@ class KafkaTaskIntegrationTest {
         @Override @Bean DataSource dataSource() {
             var ds = new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
             new ResourceDatabasePopulator(new ClassPathResource("db/migration/V20260911__add_async_task_and_outbox.sql")).execute(ds);
+            new JdbcTemplate(ds).execute("alter table async_task add column owner_user_id bigint not null");
             return ds;
         }
         @Override @Bean LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource ds) {

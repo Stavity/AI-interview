@@ -3,6 +3,7 @@ package interview.guide.modules.interview.model;
 import interview.guide.common.model.AsyncTaskStatus;
 import interview.guide.modules.resume.model.ResumeEntity;
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -16,19 +17,25 @@ import java.util.List;
     @Index(name = "idx_interview_session_resume_created", columnList = "resume_id,created_at"),
     @Index(name = "idx_interview_session_resume_status_created", columnList = "resume_id,status,created_at"),
     @Index(name = "idx_interview_session_skill_created", columnList = "skillId,createdAt")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uk_interview_sessions_owner_request_id", columnNames = {"owner_user_id", "request_id"})
 })
 public class InterviewSessionEntity {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @TenantId
+    @Column(name = "owner_user_id", nullable = false, updatable = false)
+    private Long ownerUserId;
     
     // 会话ID (UUID)
     @Column(nullable = false, unique = true, length = 36)
     private String sessionId;
 
     // 创建请求幂等键（仅文本面试创建链路使用）
-    @Column(name = "request_id", unique = true, length = 64)
+    @Column(name = "request_id", length = 64)
     private String requestId;
     
     // 面试主题

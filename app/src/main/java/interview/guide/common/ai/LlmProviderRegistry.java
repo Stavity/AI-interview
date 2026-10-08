@@ -11,6 +11,7 @@ import interview.guide.modules.llmprovider.model.LlmProviderEntity;
 import interview.guide.modules.llmprovider.repository.LlmGlobalSettingRepository;
 import interview.guide.modules.llmprovider.repository.LlmProviderRepository;
 import interview.guide.modules.llmprovider.service.ApiKeyEncryptionService;
+import interview.guide.common.tenant.TenantContext;
 import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -101,6 +102,7 @@ public class LlmProviderRegistry {
      * @throws IllegalArgumentException if the providerId is unknown
      */
     public ChatClient getChatClient(String providerId) {
+        assertProviderAccessible(providerId);
         return clientCache.computeIfAbsent(providerId, id -> {
             log.info("[LlmProviderRegistry] Creating new client for provider: {}", id);
             return createChatClient(id);
@@ -138,6 +140,7 @@ public class LlmProviderRegistry {
      */
     public ChatClient getPlainChatClient(String providerId) {
         String id = resolveProviderId(providerId);
+        assertProviderAccessible(id);
         return clientCache.computeIfAbsent(id + ":plain", key -> createPlainChatClient(id));
     }
 
@@ -149,6 +152,7 @@ public class LlmProviderRegistry {
     public ChatClient getQuestionGenerationChatClient(
             String providerId, List<ToolCallback> scopedCallbacks) {
         String id = resolveProviderId(providerId);
+        assertProviderAccessible(id);
         if (toolCallingManager == null) {
             throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
                 "题目标签工具调用未配置，无法安全生成带标签题目");
@@ -165,7 +169,9 @@ public class LlmProviderRegistry {
     }
 
     public String canonicalProviderId(String providerId) {
-        return resolveProviderId(providerId);
+        String id = resolveProviderId(providerId);
+        loadProviderOrThrow(id); // Enforce account ownership before persisting a provider selection.
+        return id;
     }
 
     public String configuredChatModel(String providerId) {
@@ -178,6 +184,7 @@ public class LlmProviderRegistry {
      */
     public ChatClient getVoiceChatClient(String providerId) {
         String id = resolveProviderId(providerId);
+        assertProviderAccessible(id);
         return clientCache.computeIfAbsent(id + ":voice", key -> createVoiceChatClient(id));
     }
 
@@ -194,6 +201,7 @@ public class LlmProviderRegistry {
     }
 
     public EmbeddingModel getEmbeddingModel(String providerId) {
+        assertProviderAccessible(providerId);
         return embeddingModelCache.computeIfAbsent(providerId, id -> {
             log.info("[LlmProviderRegistry] Creating new embedding model for provider: {}", id);
             return createEmbeddingModel(id);
@@ -443,6 +451,10 @@ public class LlmProviderRegistry {
         LlmProviderEntity entity = providerRepository.findById(providerId)
             .filter(LlmProviderEntity::isEnabled)
             .orElseThrow(() -> new IllegalArgumentException("Unknown LLM provider: " + providerId));
+        if (!entity.isBuiltin()
+            && !java.util.Objects.equals(entity.getOwnerUserId(), TenantContext.requireCurrentTenantId())) {
+            throw new IllegalArgumentException("Unknown LLM provider: " + providerId);
+        }
         return new ProviderSnapshot(
             entity.getId(),
             entity.getBaseUrl(),
@@ -455,6 +467,19 @@ public class LlmProviderRegistry {
             entity.getRerankModel(),
             entity.getTemperature()
         );
+    }
+
+    private void assertProviderAccessible(String providerId) {
+        if (providerRepository == null) {
+            return;
+        }
+        LlmProviderEntity entity = providerRepository.findById(providerId)
+            .filter(LlmProviderEntity::isEnabled)
+            .orElseThrow(() -> new IllegalArgumentException("Unknown LLM provider: " + providerId));
+        if (!entity.isBuiltin()
+            && !java.util.Objects.equals(entity.getOwnerUserId(), TenantContext.requireCurrentTenantId())) {
+            throw new IllegalArgumentException("Unknown LLM provider: " + providerId);
+        }
     }
 
     private ProviderSnapshot loadProviderFromPropertiesOrThrow(String providerId) {

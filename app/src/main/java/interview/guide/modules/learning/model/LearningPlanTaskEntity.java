@@ -1,6 +1,7 @@
 package interview.guide.modules.learning.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.Getter;
@@ -15,6 +16,7 @@ import lombok.Setter;
 public class LearningPlanTaskEntity {
   public enum Status { PENDING, COMPLETED, CANCELLED }
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+  @TenantId @Column(name = "owner_user_id", nullable = false, updatable = false) private Long ownerUserId;
   @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "plan_id", nullable = false) private LearningPlanEntity plan;
   @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "skill_source_id") private LearningSkillSourceEntity skillSource;
   @Column(name = "due_date", nullable = false) private LocalDate dueDate;

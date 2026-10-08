@@ -96,8 +96,7 @@ public class KnowledgeBaseUploadService {
                 "vectorStatus", VectorStatus.PENDING.name()
             ),
             "storage", Map.of(
-                "fileKey", fileKey,
-                "fileUrl", fileUrl
+                "downloadUrl", "/api/knowledgebase/" + savedKb.getId() + "/download"
             ),
             "duplicate", false
         );

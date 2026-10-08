@@ -6,6 +6,7 @@ import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.tenant.TenantContext;
 import interview.guide.modules.llmprovider.dto.AsrConfigDTO;
 import interview.guide.modules.llmprovider.dto.AsrConfigRequest;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
@@ -29,6 +30,8 @@ import org.springframework.boot.http.client.HttpClientSettings;
 import org.springframework.boot.http.client.InetAddressFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -165,7 +168,7 @@ public class LlmProviderConfigService {
             .toList();
       }
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
-      return providerRepository.findAll().stream()
+      return providerRepository.findAccessibleToUser(TenantContext.requireCurrentTenantId()).stream()
           .map(provider -> ProviderDTO.builder()
               .id(provider.getId())
               .baseUrl(provider.getBaseUrl())
@@ -338,6 +341,7 @@ public class LlmProviderConfigService {
     rwLock.writeLock().lock();
     try {
       if (!isDatabaseBacked()) {
+        requireAdministrator();
         createProviderLegacy(request);
         return;
       }
@@ -379,6 +383,7 @@ public class LlmProviderConfigService {
           .temperature(request.temperature())
           .enabled(true)
           .builtin(false)
+          .ownerUserId(TenantContext.requireCurrentTenantId())
           .build());
       registry.reload();
       log.info("Created provider: id={}, baseUrl={}, model={}", providerId, baseUrl, model);
@@ -392,10 +397,11 @@ public class LlmProviderConfigService {
     rwLock.writeLock().lock();
     try {
       if (!isDatabaseBacked()) {
+        requireAdministrator();
         updateProviderLegacy(id, request);
         return;
       }
-      LlmProviderEntity provider = getProviderEntityOrThrow(id);
+      LlmProviderEntity provider = getOwnedCustomProviderOrThrow(id);
 
       String trimmedBaseUrl = trimOrNull(request.baseUrl());
       if (request.baseUrl() != null && trimmedBaseUrl == null) {
@@ -458,6 +464,7 @@ public class LlmProviderConfigService {
     rwLock.writeLock().lock();
     try {
       if (!isDatabaseBacked()) {
+        requireAdministrator();
         deleteProviderLegacy(id);
         return;
       }
@@ -468,7 +475,7 @@ public class LlmProviderConfigService {
         throw new BusinessException(ErrorCode.PROVIDER_DEFAULT_CANNOT_DELETE,
             "默认 Provider '" + id + "' 不可删除，请先切换默认 Provider");
       }
-      getProviderEntityOrThrow(id);
+      getOwnedCustomProviderOrThrow(id);
 
       providerRepository.deleteById(id);
       registry.reload();
@@ -483,14 +490,16 @@ public class LlmProviderConfigService {
     rwLock.writeLock().lock();
     try {
       if (!isDatabaseBacked()) {
+        requireAdministrator();
         updateDefaultProviderLegacy(request);
         return;
       }
+      requireAdministrator();
       String providerId = trimOrNull(request.defaultProvider());
       if (providerId == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultProvider 不能为空");
       }
-      getProviderEntityOrThrow(providerId);
+      requireBuiltinProvider(providerId);
       LlmGlobalSettingEntity setting = getGlobalSettingOrThrow();
       setting.setDefaultChatProviderId(providerId);
       globalSettingRepository.save(setting);
@@ -505,11 +514,12 @@ public class LlmProviderConfigService {
   public void updateDefaultEmbeddingProvider(DefaultProviderDTO request) {
     rwLock.writeLock().lock();
     try {
+      requireAdministrator();
       String providerId = trimOrNull(request.defaultEmbeddingProvider());
       if (providerId == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultEmbeddingProvider 不能为空");
       }
-      LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
+      LlmProviderEntity provider = requireBuiltinProvider(providerId);
       String embeddingModel = trimOrNull(provider.getEmbeddingModel());
       if (!provider.isSupportsEmbedding() || embeddingModel == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST,
@@ -534,11 +544,12 @@ public class LlmProviderConfigService {
   public void updateDefaultRerankProvider(DefaultProviderDTO request) {
     rwLock.writeLock().lock();
     try {
+      requireAdministrator();
       String providerId = trimOrNull(request.defaultRerankProvider());
       if (providerId == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST, "defaultRerankProvider 不能为空");
       }
-      LlmProviderEntity provider = getProviderEntityOrThrow(providerId);
+      LlmProviderEntity provider = requireBuiltinProvider(providerId);
       if (!provider.isSupportsRerank() || trimOrNull(provider.getRerankModel()) == null) {
         throw new BusinessException(ErrorCode.BAD_REQUEST,
             "Provider '" + providerId + "' 不支持 Rerank，不能设为默认精排服务");
@@ -556,6 +567,7 @@ public class LlmProviderConfigService {
   public void updateAsrConfig(AsrConfigRequest request) {
     rwLock.writeLock().lock();
     try {
+      requireAdministrator();
       VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
       VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
       if (request.url() != null) asr.setUrl(request.url());
@@ -587,6 +599,7 @@ public class LlmProviderConfigService {
   public void updateTtsConfig(TtsConfigRequest request) {
     rwLock.writeLock().lock();
     try {
+      requireAdministrator();
       VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
       VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
       if (request.model() != null) tts.setModel(request.model());
@@ -751,9 +764,38 @@ public class LlmProviderConfigService {
   }
 
   LlmProviderEntity getProviderEntityOrThrow(String id) {
-    return providerRepository.findById(id)
+    LlmProviderEntity provider = providerRepository.findById(id)
         .orElseThrow(() -> new BusinessException(ErrorCode.PROVIDER_NOT_FOUND,
             "Provider '" + id + "' 不存在"));
+    if (!provider.isBuiltin()
+        && !java.util.Objects.equals(provider.getOwnerUserId(), TenantContext.requireCurrentTenantId())) {
+      throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND, "Provider '" + id + "' 不存在");
+    }
+    return provider;
+  }
+
+  private LlmProviderEntity getOwnedCustomProviderOrThrow(String id) {
+    LlmProviderEntity provider = getProviderEntityOrThrow(id);
+    if (provider.isBuiltin()) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "内置 Provider 为平台共享配置，不能由个人修改或删除");
+    }
+    return provider;
+  }
+
+  private LlmProviderEntity requireBuiltinProvider(String id) {
+    LlmProviderEntity provider = getProviderEntityOrThrow(id);
+    if (!provider.isBuiltin()) {
+      throw new BusinessException(ErrorCode.BAD_REQUEST, "平台默认 Provider 只能使用内置配置");
+    }
+    return provider;
+  }
+
+  private void requireAdministrator() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null || !authentication.getAuthorities().stream()
+        .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()))) {
+      throw new BusinessException(ErrorCode.FORBIDDEN, "仅平台管理员可以修改全局模型服务配置");
+    }
   }
 
   private LlmGlobalSettingEntity getGlobalSettingOrThrow() {

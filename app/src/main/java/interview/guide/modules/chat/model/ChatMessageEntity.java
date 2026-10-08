@@ -1,6 +1,7 @@
 package interview.guide.modules.chat.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,6 +15,7 @@ import lombok.Setter;
 public class ChatMessageEntity {
   public enum Role { USER, ASSISTANT }
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+  @TenantId @Column(name = "owner_user_id", nullable = false, updatable = false) private Long ownerUserId;
   @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "session_id", nullable = false) private ChatSessionEntity session;
   @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private Role role;
   @Column(nullable = false, columnDefinition = "TEXT") private String content;

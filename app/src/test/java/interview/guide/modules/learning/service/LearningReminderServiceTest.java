@@ -3,12 +3,14 @@ package interview.guide.modules.learning.service;
 import interview.guide.modules.learning.model.LearningPlanTaskEntity;
 import interview.guide.modules.learning.model.LearningReminderEntity;
 import interview.guide.modules.learning.repository.LearningReminderRepository;
+import interview.guide.modules.auth.repository.UserAccountRepository;
 import org.springframework.data.domain.PageImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,6 +28,12 @@ class LearningReminderServiceTest {
   @Mock
   private LearningReminderRepository reminderRepository;
 
+  @Mock
+  private UserAccountRepository userRepository;
+
+  @Mock
+  private TransactionTemplate transactionTemplate;
+
   @Test
   @DisplayName("扫描到期提醒时通过条件更新抢占 READY，避免多实例重复投递")
   void shouldClaimDuePendingRemindersWithConditionalUpdate() {
@@ -35,7 +43,7 @@ class LearningReminderServiceTest {
         .thenReturn(new PageImpl<>(List.of(reminder)));
     when(reminderRepository.claimDueReminderAsReady(eq(reminder.getId()), any())).thenReturn(1);
 
-    int readyCount = new LearningReminderService(reminderRepository).markDueRemindersReady(LocalDateTime.now());
+    int readyCount = service().markDueRemindersReady(LocalDateTime.now());
 
     assertThat(readyCount).isOne();
     verify(reminderRepository).claimDueReminderAsReady(eq(reminder.getId()), any());
@@ -50,12 +58,16 @@ class LearningReminderServiceTest {
     when(reminderRepository.findById(8L)).thenReturn(Optional.of(reminder));
     when(reminderRepository.save(any(LearningReminderEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-    LearningReminderService service = new LearningReminderService(reminderRepository);
+    LearningReminderService service = service();
     service.acknowledge(8L, LearningReminderEntity.Status.DELIVERED, null);
     service.acknowledge(8L, LearningReminderEntity.Status.DELIVERED, null);
 
     assertThat(reminder.getStatus()).isEqualTo(LearningReminderEntity.Status.DELIVERED);
     assertThat(reminder.getDeliveredAt()).isNotNull();
     verify(reminderRepository).save(reminder);
+  }
+
+  private LearningReminderService service() {
+    return new LearningReminderService(reminderRepository, userRepository, transactionTemplate);
   }
 }

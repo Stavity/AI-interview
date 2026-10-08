@@ -103,8 +103,7 @@ public class ResumeUploadService {
                 "analyzeStatus", AsyncTaskStatus.PENDING.name()
             ),
             "storage", Map.of(
-                "fileKey", fileKey,
-                "fileUrl", fileUrl,
+                "downloadUrl", "/api/resumes/" + savedResume.getId() + "/download",
                 "resumeId", savedResume.getId()
             ),
             "duplicate", false
@@ -145,8 +144,7 @@ public class ResumeUploadService {
         return analysisOpt.map(resumeAnalysisResponse -> Map.of(
                 "analysis", resumeAnalysisResponse,
                 "storage", Map.of(
-                        "fileKey", resume.getStorageKey() != null ? resume.getStorageKey() : "",
-                        "fileUrl", resume.getStorageUrl() != null ? resume.getStorageUrl() : "",
+                        "downloadUrl", "/api/resumes/" + resume.getId() + "/download",
                         "resumeId", resume.getId()
                 ),
                 "duplicate", true
@@ -157,8 +155,7 @@ public class ResumeUploadService {
                         "analyzeStatus", resume.getAnalyzeStatus() != null ? resume.getAnalyzeStatus().name() : AsyncTaskStatus.PENDING.name()
                 ),
                 "storage", Map.of(
-                        "fileKey", resume.getStorageKey() != null ? resume.getStorageKey() : "",
-                        "fileUrl", resume.getStorageUrl() != null ? resume.getStorageUrl() : "",
+                        "downloadUrl", "/api/resumes/" + resume.getId() + "/download",
                         "resumeId", resume.getId()
                 ),
                 "duplicate", true

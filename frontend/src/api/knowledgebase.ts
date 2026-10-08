@@ -44,8 +44,7 @@ export interface UploadKnowledgeBaseResponse {
     contentLength: number;
   };
   storage: {
-    fileKey: string;
-    fileUrl: string;
+    downloadUrl: string;
   };
   duplicate: boolean;
 }

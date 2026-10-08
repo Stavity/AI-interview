@@ -20,19 +20,22 @@ import java.util.Optional;
 public interface InterviewSessionRepository extends JpaRepository<InterviewSessionEntity, Long> {
 
     @Query(value = "SELECT * FROM interview_sessions "
-        + "WHERE id > :afterId AND status IN ('COMPLETED', 'EVALUATED') AND questions_json IS NOT NULL "
+        + "WHERE owner_user_id = :ownerUserId AND id > :afterId "
+        + "AND status IN ('COMPLETED', 'EVALUATED') AND questions_json IS NOT NULL "
         + "AND questions_json NOT LIKE '%\"taggingSource\":\"BACKFILLED\"%' "
         + "ORDER BY id ASC",
         nativeQuery = true)
     List<InterviewSessionEntity> findBackfillCandidates(
+        @Param("ownerUserId") Long ownerUserId,
         @Param("afterId") Long afterId,
         Pageable pageable);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE InterviewSessionEntity s SET s.questionsJson = :newJson "
-        + "WHERE s.id = :id AND s.questionsJson = :oldJson")
+        + "WHERE s.id = :id AND s.ownerUserId = :ownerUserId AND s.questionsJson = :oldJson")
     int updateQuestionsJsonIfUnchanged(
         @Param("id") Long id,
+        @Param("ownerUserId") Long ownerUserId,
         @Param("oldJson") String oldJson,
         @Param("newJson") String newJson);
 

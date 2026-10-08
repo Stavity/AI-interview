@@ -2,6 +2,7 @@ package interview.guide.modules.questiontag.service;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.tenant.TenantContext;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewSessionEntity;
 import interview.guide.modules.interview.repository.InterviewSessionRepository;
@@ -100,7 +101,7 @@ public class QuestionTagBackfillBatchService {
   ) {
     Pageable pageable = PageRequest.of(0, batchSize, Sort.by(Sort.Direction.ASC, "id"));
     List<InterviewSessionEntity> sessions = sessionRepository.findBackfillCandidates(
-        afterId, pageable);
+        TenantContext.requireCurrentTenantId(), afterId, pageable);
     int tagged = 0;
     int review = 0;
     int unmatched = 0;
@@ -170,7 +171,7 @@ public class QuestionTagBackfillBatchService {
       try {
         String updatedJson = objectMapper.writeValueAsString(updatedQuestions);
         if (sessionRepository.updateQuestionsJsonIfUnchanged(
-            session.getId(), originalJson, updatedJson) != 1) {
+            session.getId(), TenantContext.requireCurrentTenantId(), originalJson, updatedJson) != 1) {
           skipped++;
         }
       } catch (JacksonException e) {

@@ -3,6 +3,7 @@ package interview.guide.modules.knowledgebase.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.common.transaction.TransactionalExecutor;
+import interview.guide.common.tenant.TenantContext;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -32,6 +33,7 @@ public class KnowledgeBaseVectorService {
     private static final String METADATA_KB_ID = "kb_id";
     private static final String METADATA_TARGET_KB_ID = "kb_target_id";
     private static final String METADATA_VECTOR_JOB_ID = "kb_vector_job_id";
+    private static final String METADATA_OWNER_USER_ID = "owner_user_id";
     private final VectorStore vectorStore;
     private final KnowledgeBaseChunkService chunkService;
     private final VectorRepository vectorRepository;
@@ -115,10 +117,12 @@ public class KnowledgeBaseVectorService {
 
     private void applyPendingMetadata(List<Document> chunks, Long knowledgeBaseId, String jobId) {
         String pendingKbId = TEMP_KB_ID_PREFIX + knowledgeBaseId + ":" + jobId;
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
         chunks.forEach(chunk -> {
             chunk.getMetadata().put(METADATA_KB_ID, pendingKbId);
             chunk.getMetadata().put(METADATA_TARGET_KB_ID, knowledgeBaseId.toString());
             chunk.getMetadata().put(METADATA_VECTOR_JOB_ID, jobId);
+            chunk.getMetadata().put(METADATA_OWNER_USER_ID, ownerUserId);
             chunk.getMetadata().put("kb_vector_created_at", java.time.Instant.now().toString());
         });
     }
@@ -132,6 +136,10 @@ public class KnowledgeBaseVectorService {
      * @return 相关文档列表
      */
     public List<Document> similaritySearch(String query, List<Long> knowledgeBaseIds, int topK, double minScore) {
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
+        if (knowledgeBaseIds == null || knowledgeBaseIds.isEmpty()) {
+            return List.of();
+        }
         log.info("向量相似度搜索: query={}, kbIds={}, topK={}, minScore={}",
             query, knowledgeBaseIds, topK, minScore);
         
@@ -144,14 +152,18 @@ public class KnowledgeBaseVectorService {
                 builder.similarityThreshold(minScore);
             }
 
-            if (knowledgeBaseIds != null && !knowledgeBaseIds.isEmpty()) {
-                builder.filterExpression(buildKbFilterExpression(knowledgeBaseIds));
-            }
+            builder.filterExpression(buildOwnerAndKbFilterExpression(ownerUserId, knowledgeBaseIds));
 
             List<Document> results = vectorStore.similaritySearch(builder.build());
             if (results == null) {
                 return List.of();
             }
+
+            // Defense in depth: never trust a VectorStore adapter to honor its filter perfectly.
+            results = results.stream()
+                .filter(doc -> isDocOwnedBy(doc, ownerUserId))
+                .filter(doc -> isDocInKnowledgeBases(doc, knowledgeBaseIds))
+                .toList();
 
             // Apply topK limiting in case VectorStore returns more than requested
             List<Document> limitedResults = results.stream()
@@ -163,11 +175,12 @@ public class KnowledgeBaseVectorService {
             
         } catch (Exception e) {
             log.warn("向量搜索前置过滤失败，回退到本地过滤: {}", e.getMessage());
-            return similaritySearchFallback(query, knowledgeBaseIds, topK, minScore);
+            return similaritySearchFallback(query, ownerUserId, knowledgeBaseIds, topK, minScore);
         }
     }
 
-    private List<Document> similaritySearchFallback(String query, List<Long> knowledgeBaseIds, int topK, double minScore) {
+    private List<Document> similaritySearchFallback(String query, Long ownerUserId,
+                                                      List<Long> knowledgeBaseIds, int topK, double minScore) {
         try {
             // 回退检索仍保留 topK/minScore，避免兜底路径引入过多弱相关命中
             SearchRequest.Builder builder = SearchRequest.builder()
@@ -182,11 +195,10 @@ public class KnowledgeBaseVectorService {
                 return List.of();
             }
 
-            if (knowledgeBaseIds != null && !knowledgeBaseIds.isEmpty()) {
-                allResults = allResults.stream()
-                    .filter(doc -> isDocInKnowledgeBases(doc, knowledgeBaseIds))
-                    .collect(Collectors.toList());
-            }
+            allResults = allResults.stream()
+                .filter(doc -> isDocOwnedBy(doc, ownerUserId))
+                .filter(doc -> isDocInKnowledgeBases(doc, knowledgeBaseIds))
+                .collect(Collectors.toList());
 
             List<Document> results = allResults.stream()
                 .limit(topK)
@@ -199,6 +211,11 @@ public class KnowledgeBaseVectorService {
             throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_QUERY_FAILED,
                 "向量搜索失败: " + e.getMessage());
         }
+    }
+
+    private boolean isDocOwnedBy(Document doc, Long ownerUserId) {
+        Object owner = doc.getMetadata().get(METADATA_OWNER_USER_ID);
+        return owner != null && ownerUserId.toString().equals(owner.toString());
     }
 
     private boolean isDocInKnowledgeBases(Document doc, List<Long> knowledgeBaseIds) {
@@ -216,13 +233,13 @@ public class KnowledgeBaseVectorService {
         }
     }
 
-    private String buildKbFilterExpression(List<Long> knowledgeBaseIds) {
+    private String buildOwnerAndKbFilterExpression(Long ownerUserId, List<Long> knowledgeBaseIds) {
         String values = knowledgeBaseIds.stream()
             .filter(Objects::nonNull)
             .map(String::valueOf)
             .map(id -> "'" + id + "'")
             .collect(Collectors.joining(", "));
-        return "kb_id in [" + values + "]";
+        return METADATA_OWNER_USER_ID + " == " + ownerUserId + " && kb_id in [" + values + "]";
     }
     
     /**
@@ -243,7 +260,7 @@ public class KnowledgeBaseVectorService {
     }
 
     private void deleteByKnowledgeBaseIdStrict(Long knowledgeBaseId) {
-        runVectorRepositoryMutation(() -> vectorRepository.deleteByKnowledgeBaseId(knowledgeBaseId));
+        runVectorRepositoryMutation(() -> vectorRepository.deleteAllByKnowledgeBaseId(knowledgeBaseId));
     }
 
     private void activateVectorJob(Long knowledgeBaseId, String jobId) {

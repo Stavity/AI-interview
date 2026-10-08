@@ -1,7 +1,10 @@
 package interview.guide.modules.knowledgebase.service;
 
 import interview.guide.common.exception.BusinessException;
+import interview.guide.modules.auth.model.UserRole;
+import interview.guide.modules.auth.security.AuthenticatedUser;
 import interview.guide.modules.knowledgebase.repository.VectorRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -12,6 +15,8 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,8 +57,17 @@ class KnowledgeBaseVectorServiceTest {
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+        AuthenticatedUser user = new AuthenticatedUser(1L, java.util.UUID.randomUUID(),
+            "test@example.com", "Test", UserRole.USER);
+        SecurityContextHolder.getContext().setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated(user, "test", user.getAuthorities()));
         vectorService = new KnowledgeBaseVectorService(
             vectorStore, new KnowledgeBaseChunkService(new KnowledgeBaseChunkProperties()), vectorRepository);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     // ==================== 共享辅助方法 ====================
@@ -86,6 +100,7 @@ class KnowledgeBaseVectorServiceTest {
         List<Document> documents = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             Map<String, Object> metadata = new HashMap<>();
+            metadata.put("owner_user_id", 1L);
             if (kbId != null) {
                 metadata.put("kb_id", kbId);
             }
@@ -106,6 +121,7 @@ class KnowledgeBaseVectorServiceTest {
      */
     private Document createDocumentWithLongKbId(Long kbId) {
         Map<String, Object> metadata = new HashMap<>();
+        metadata.put("owner_user_id", 1L);
         metadata.put("kb_id", kbId); // Long 类型
         return new Document("Long kb_id 文档", metadata);
     }
@@ -115,6 +131,7 @@ class KnowledgeBaseVectorServiceTest {
      */
     private Document createDocumentWithInvalidKbId(String invalidKbId) {
         Map<String, Object> metadata = new HashMap<>();
+        metadata.put("owner_user_id", 1L);
         if (invalidKbId != null) {
             metadata.put("kb_id", invalidKbId);
         }
@@ -225,6 +242,8 @@ class KnowledgeBaseVectorServiceTest {
                         "metadata 中的 kb_id 应该先写入临时值，避免失败时污染正式检索");
                     assertEquals(knowledgeBaseId.toString(), doc.getMetadata().get("kb_target_id"),
                         "metadata 中的 kb_target_id 应该等于目标知识库ID");
+                    assertEquals(1L, doc.getMetadata().get("owner_user_id"),
+                        "向量 metadata 必须写入可信 owner id");
                     assertTrue(doc.getMetadata().get("kb_vector_job_id").toString().length() > 10,
                         "metadata 中应包含向量化任务ID");
                 }
@@ -299,11 +318,11 @@ class KnowledgeBaseVectorServiceTest {
             String query = "Java 开发经验";
             int topK = 5;
 
-            List<Document> mockResults = createMockDocuments(10, null);
+            List<Document> mockResults = createMockDocuments(10, "1");
             when(vectorStore.similaritySearch(any(org.springframework.ai.vectorstore.SearchRequest.class))).thenReturn(mockResults);
 
             // When
-            List<Document> results = vectorService.similaritySearch(query, null, topK, 0.0);
+            List<Document> results = vectorService.similaritySearch(query, List.of(1L), topK, 0.0);
 
             // Then
             assertEquals(topK, results.size(), "应该返回 topK 个结果");
@@ -341,6 +360,19 @@ class KnowledgeBaseVectorServiceTest {
                 assertTrue(kbId.equals("1") || kbId.equals("2"),
                     "结果应该只包含指定知识库的文档");
             }
+        }
+
+        @Test
+        @DisplayName("即使向量适配器忽略过滤条件也不返回其他账户的文档")
+        void testSearchAlwaysRejectsForeignOwnerDocuments() {
+            Document own = createMockDocuments(1, "1").getFirst();
+            Document foreign = createMockDocuments(1, "1").getFirst();
+            foreign.getMetadata().put("owner_user_id", 2L);
+            when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(foreign, own));
+
+            List<Document> results = vectorService.similaritySearch("测试", List.of(1L), 10, 0.0);
+
+            assertEquals(List.of(own), results);
         }
 
         @Test
@@ -395,28 +427,26 @@ class KnowledgeBaseVectorServiceTest {
             // When & Then
             RuntimeException exception = assertThrows(
                 RuntimeException.class,
-                () -> vectorService.similaritySearch(query, null, 5, 0.0)
+                () -> vectorService.similaritySearch(query, List.of(1L), 5, 0.0)
             );
 
             assertTrue(exception.getMessage().contains("向量搜索失败"));
         }
 
         @Test
-        @DisplayName("空知识库ID列表 - 不进行过滤")
+        @DisplayName("空知识库ID列表 - 不允许无范围全库搜索")
         void testSearchWithEmptyKnowledgeBaseIdList() {
             // Given
             String query = "查询";
             List<Long> emptyList = List.of();
             int topK = 5;
 
-            List<Document> mockResults = createMockDocuments(10, "1");
-            when(vectorStore.similaritySearch(any(org.springframework.ai.vectorstore.SearchRequest.class))).thenReturn(mockResults);
-
             // When
             List<Document> results = vectorService.similaritySearch(query, emptyList, topK, 0.0);
 
-            // Then: 空列表应该返回所有结果（受 topK 限制）
-            assertEquals(topK, results.size());
+            // Then: an empty scope must never mean global vector search.
+            assertTrue(results.isEmpty());
+            verifyNoInteractions(vectorStore);
         }
 
         @Test
@@ -427,7 +457,7 @@ class KnowledgeBaseVectorServiceTest {
             when(vectorStore.similaritySearch(any(org.springframework.ai.vectorstore.SearchRequest.class))).thenReturn(List.of());
 
             // When
-            List<Document> results = vectorService.similaritySearch(query, null, 10, 0.0);
+            List<Document> results = vectorService.similaritySearch(query, List.of(1L), 10, 0.0);
 
             // Then
             assertTrue(results.isEmpty(), "搜索结果应该为空");
@@ -484,13 +514,13 @@ class KnowledgeBaseVectorServiceTest {
         void testDeleteByKnowledgeBaseId() {
             // Given
             Long knowledgeBaseId = 1L;
-            when(vectorRepository.deleteByKnowledgeBaseId(knowledgeBaseId)).thenReturn(5);
+            when(vectorRepository.deleteAllByKnowledgeBaseId(knowledgeBaseId)).thenReturn(5);
 
             // When
             vectorService.deleteByKnowledgeBaseId(knowledgeBaseId);
 
             // Then
-            verify(vectorRepository, times(1)).deleteByKnowledgeBaseId(knowledgeBaseId);
+            verify(vectorRepository, times(1)).deleteAllByKnowledgeBaseId(knowledgeBaseId);
         }
 
         @Test
@@ -499,7 +529,7 @@ class KnowledgeBaseVectorServiceTest {
             // Given
             Long knowledgeBaseId = 1L;
             doThrow(new RuntimeException("数据库错误"))
-                .when(vectorRepository).deleteByKnowledgeBaseId(knowledgeBaseId);
+                .when(vectorRepository).deleteAllByKnowledgeBaseId(knowledgeBaseId);
 
             // When & Then: 不应该抛出异常
             assertDoesNotThrow(() -> vectorService.deleteByKnowledgeBaseId(knowledgeBaseId));
@@ -510,13 +540,13 @@ class KnowledgeBaseVectorServiceTest {
         void testDeleteNonExistentKnowledgeBase() {
             // Given
             Long knowledgeBaseId = 999L;
-            when(vectorRepository.deleteByKnowledgeBaseId(knowledgeBaseId)).thenReturn(0);
+            when(vectorRepository.deleteAllByKnowledgeBaseId(knowledgeBaseId)).thenReturn(0);
 
             // When
             vectorService.deleteByKnowledgeBaseId(knowledgeBaseId);
 
             // Then: 应该正常执行，不抛出异常
-            verify(vectorRepository, times(1)).deleteByKnowledgeBaseId(knowledgeBaseId);
+            verify(vectorRepository, times(1)).deleteAllByKnowledgeBaseId(knowledgeBaseId);
         }
     }
 
@@ -564,7 +594,7 @@ class KnowledgeBaseVectorServiceTest {
             when(vectorStore.similaritySearch(any(org.springframework.ai.vectorstore.SearchRequest.class))).thenReturn(List.of());
 
             // When
-            List<Document> results = vectorService.similaritySearch(emptyQuery, null, 5, 0.0);
+            List<Document> results = vectorService.similaritySearch(emptyQuery, List.of(1L), 5, 0.0);
 
             // Then
             assertTrue(results.isEmpty());
@@ -575,11 +605,11 @@ class KnowledgeBaseVectorServiceTest {
         void testTopKZero() {
             // Given
             String query = "测试";
-            List<Document> mockResults = createMockDocuments(5);
+            List<Document> mockResults = createMockDocuments(5, "1");
             when(vectorStore.similaritySearch(any(org.springframework.ai.vectorstore.SearchRequest.class))).thenReturn(mockResults);
 
             // When
-            List<Document> results = vectorService.similaritySearch(query, null, 0, 0.0);
+            List<Document> results = vectorService.similaritySearch(query, List.of(1L), 0, 0.0);
 
             // Then
             assertTrue(results.isEmpty(), "topK=0 应该返回空结果");
@@ -591,11 +621,11 @@ class KnowledgeBaseVectorServiceTest {
             // Given
             String query = "测试";
             int topK = 100;
-            List<Document> mockResults = createMockDocuments(5);
+            List<Document> mockResults = createMockDocuments(5, "1");
             when(vectorStore.similaritySearch(any(org.springframework.ai.vectorstore.SearchRequest.class))).thenReturn(mockResults);
 
             // When
-            List<Document> results = vectorService.similaritySearch(query, null, topK, 0.0);
+            List<Document> results = vectorService.similaritySearch(query, List.of(1L), topK, 0.0);
 
             // Then
             assertEquals(5, results.size(), "应该返回所有可用结果");

@@ -1,6 +1,7 @@
 package interview.guide.modules.knowledgebase.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -24,6 +25,10 @@ public class RagChatMessageEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @TenantId
+    @Column(name = "owner_user_id", nullable = false, updatable = false)
+    private Long ownerUserId;
 
     /**
      * 关联的会话

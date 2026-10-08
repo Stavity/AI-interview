@@ -44,8 +44,7 @@ public class KnowledgeBasePersistenceService {
                 "contentLength", 0  // 不再存储content，所以长度为0
             ),
             "storage", Map.of(
-                "fileKey", kb.getStorageKey() != null ? kb.getStorageKey() : "",
-                "fileUrl", kb.getStorageUrl() != null ? kb.getStorageUrl() : ""
+                "downloadUrl", "/api/knowledgebase/" + kb.getId() + "/download"
             ),
             "duplicate", true
         );

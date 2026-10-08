@@ -54,6 +54,7 @@ public interface ResumeMapper {
             lastAnalyzedAt,
             interviewCount,
             null,
+            null,
             null
         );
     }
@@ -65,6 +66,7 @@ public interface ResumeMapper {
     @Mapping(target = "latestScore", ignore = true)
     @Mapping(target = "lastAnalyzedAt", ignore = true)
     @Mapping(target = "interviewCount", ignore = true)
+    @Mapping(target = "downloadUrl", ignore = true)
     ResumeListItemDTO toListItemDTOBasic(ResumeEntity entity);
 
     // ========== ResumeDetailDTO 映射 ==========
@@ -73,6 +75,7 @@ public interface ResumeMapper {
      * ResumeEntity 转换为 ResumeDetailDTO（不含 analyses 和 interviews）
      */
     @Mapping(target = "filename", source = "originalFilename")
+    @Mapping(target = "downloadUrl", ignore = true)
     @Mapping(target = "analyses", ignore = true)
     @Mapping(target = "interviews", ignore = true)
     ResumeDetailDTO toDetailDTOBasic(ResumeEntity entity);

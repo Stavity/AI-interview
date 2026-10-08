@@ -3,6 +3,7 @@ package interview.guide.modules.chat;
 import interview.guide.common.annotation.RateLimit;
 import interview.guide.common.result.Result;
 import interview.guide.modules.chat.model.ChatSessionEntity;
+import interview.guide.common.tenant.TenantContext;
 import interview.guide.modules.chat.model.ChatMessageEntity;
 import interview.guide.modules.chat.service.ChatMessageService;
 import interview.guide.modules.chat.service.ChatSessionService;
@@ -74,28 +75,35 @@ public class ChatController {
   @RateLimit(dimension = RateLimit.Dimension.IP, count = 10)
   public Flux<ServerSentEvent<String>> streamMessage(
       @PathVariable Long sessionId, @Valid @RequestBody SendMessageRequest request) {
+    Long ownerUserId = TenantContext.requireCurrentTenantId();
     Long assistantMessageId = messageService.prepareStreamMessage(sessionId, request.content());
     StringBuilder fullContent = new StringBuilder();
     return streamService.streamReply(sessionId, request.content())
         .doOnNext(fullContent::append)
         .map(chunk -> ServerSentEvent.<String>builder().data(chunk).build())
         .doOnComplete(() -> {
-      messageService.completeStreamMessage(assistantMessageId, fullContent.toString());
-      summaryService.updateSummaryIfNeeded(sessionId);
+      TenantContext.runAs(ownerUserId, () -> {
+        messageService.completeStreamMessage(assistantMessageId, fullContent.toString());
+        summaryService.updateSummaryIfNeeded(sessionId);
+      });
     })
-        .doOnError(error -> messageService.failStreamMessage(assistantMessageId, "AI_SERVICE_ERROR"));
+        .doOnError(error -> TenantContext.runAs(ownerUserId,
+            () -> messageService.failStreamMessage(assistantMessageId, "AI_SERVICE_ERROR")));
   }
   @PostMapping(value = "/sessions/{sessionId}/messages/{messageId}/retry", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
   @RateLimit(dimension = RateLimit.Dimension.IP, count = 5)
   public Flux<ServerSentEvent<String>> retryMessage(@PathVariable Long sessionId, @PathVariable Long messageId) {
+    Long ownerUserId = TenantContext.requireCurrentTenantId();
     ChatMessageService.RetryRequest retry = messageService.retryFailedAssistant(messageId);
     if (!retry.sessionId().equals(sessionId)) throw new interview.guide.common.exception.BusinessException(interview.guide.common.exception.ErrorCode.BAD_REQUEST, "消息不属于当前会话");
     StringBuilder fullContent = new StringBuilder();
     return streamService.streamReply(sessionId, retry.userContent())
         .doOnNext(fullContent::append)
         .map(chunk -> ServerSentEvent.<String>builder().data(chunk).build())
-        .doOnComplete(() -> messageService.completeStreamMessage(retry.assistantMessageId(), fullContent.toString()))
-        .doOnError(error -> messageService.failStreamMessage(retry.assistantMessageId(), "AI_SERVICE_ERROR"));
+        .doOnComplete(() -> TenantContext.runAs(ownerUserId,
+            () -> messageService.completeStreamMessage(retry.assistantMessageId(), fullContent.toString())))
+        .doOnError(error -> TenantContext.runAs(ownerUserId,
+            () -> messageService.failStreamMessage(retry.assistantMessageId(), "AI_SERVICE_ERROR")));
   }
 
   public record CreateSessionRequest(String title) {}

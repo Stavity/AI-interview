@@ -50,11 +50,12 @@ public class RagChatSessionService {
      */
     @Transactional
     public SessionDTO createSession(CreateSessionRequest request) {
+        java.util.Set<Long> requestedIds = new HashSet<>(request.knowledgeBaseIds());
         // 验证知识库存在
         List<KnowledgeBaseEntity> knowledgeBases = knowledgeBaseRepository
-            .findAllById(request.knowledgeBaseIds());
+            .findAllById(requestedIds);
 
-        if (knowledgeBases.size() != request.knowledgeBaseIds().size()) {
+        if (knowledgeBases.size() != requestedIds.size()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "部分知识库不存在");
         }
 
@@ -214,6 +215,10 @@ public class RagChatSessionService {
 
         List<KnowledgeBaseEntity> knowledgeBases = knowledgeBaseRepository
             .findAllById(knowledgeBaseIds);
+
+        if (knowledgeBases.size() != new HashSet<>(knowledgeBaseIds).size()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "部分知识库不存在");
+        }
 
         session.setKnowledgeBases(new HashSet<>(knowledgeBases));
         sessionRepository.save(session);

@@ -1,6 +1,7 @@
 package interview.guide.common.async;
 
 import interview.guide.infrastructure.kafka.KafkaTaskProperties;
+import interview.guide.common.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,13 +22,21 @@ public class AsyncTaskExecutionService {
         var claim = state.claim(envelope);
         if (claim == null) return;
         var completed = new AtomicBoolean();
-        var context = new TaskExecutionContext(claim.id(), claim.businessId(), claim.version(), claim.input(), write -> {
+        var context = new TaskExecutionContext(claim.id(), claim.ownerUserId(), claim.businessId(), claim.version(), claim.input(), write -> {
             state.complete(claim, write);
             completed.set(true);
         });
         var future = workers.submit(() -> {
-            handlers.get(claim.type()).execute(context);
-            if (!completed.get()) throw new IllegalStateException("Handler returned without completing task");
+            TenantContext.runAs(claim.ownerUserId(), () -> {
+                var handler = handlers.get(claim.type());
+                if (!handler.isCurrent(claim.id(), claim.businessId())) {
+                    state.cancel(claim);
+                    return;
+                }
+                handler.updateStatus(claim.businessId(), interview.guide.common.async.AsyncTaskState.RUNNING, null);
+                handler.execute(context);
+                if (!completed.get()) throw new IllegalStateException("Handler returned without completing task");
+            });
         });
         long interval = properties.getHeartbeatInterval().toMillis();
         var heartbeat = heartbeats.scheduleAtFixedRate(() -> {
@@ -43,7 +52,7 @@ public class AsyncTaskExecutionService {
             future.cancel(true);
             Throwable cause = e instanceof ExecutionException ? e.getCause() : e;
             log.warn("Task execution failed: taskId={}, type={}, cause={}", claim.id(), claim.type(), cause.getClass().getSimpleName());
-            state.fail(claim, TaskFailurePolicy.retryable(cause));
+            TenantContext.runAs(claim.ownerUserId(), () -> state.fail(claim, TaskFailurePolicy.retryable(cause)));
         } finally { heartbeat.cancel(false); }
     }
     @PreDestroy public void shutdown() { workers.shutdownNow(); heartbeats.shutdownNow(); }

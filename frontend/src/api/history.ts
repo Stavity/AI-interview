@@ -14,7 +14,7 @@ export interface ResumeListItem {
   interviewCount: number;
   analyzeStatus?: AnalyzeStatus;
   analyzeError?: string;
-  storageUrl?: string;
+  downloadUrl?: string;
 }
 
 export interface ResumeStats {
@@ -71,7 +71,7 @@ export interface ResumeDetail {
   filename: string;
   fileSize: number;
   contentType: string;
-  storageUrl: string;
+  downloadUrl: string | null;
   uploadedAt: string;
   accessCount: number;
   resumeText: string;
@@ -114,6 +114,10 @@ export const historyApi = {
    */
   async exportAnalysisPdf(resumeId: number): Promise<Blob> {
     return request.download(`/api/resumes/${resumeId}/export`);
+  },
+
+  async downloadResume(resumeId: number): Promise<Blob> {
+    return request.download(`/api/resumes/${resumeId}/download`);
   },
 
   /**

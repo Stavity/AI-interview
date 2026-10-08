@@ -1,6 +1,7 @@
 package interview.guide.modules.learning.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.Getter;
@@ -15,6 +16,7 @@ import lombok.Setter;
 public class LearningPlanEntity {
   public enum Status { DRAFT, ACTIVE, COMPLETED, ARCHIVED }
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+  @TenantId @Column(name = "owner_user_id", nullable = false, updatable = false) private Long ownerUserId;
   @Column(nullable = false) private String title;
   @Column(columnDefinition = "TEXT") private String goal;
   @Column(name = "start_date", nullable = false) private LocalDate startDate;

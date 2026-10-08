@@ -4,6 +4,9 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.learning.model.LearningReminderEntity;
 import interview.guide.modules.learning.repository.LearningReminderRepository;
+import interview.guide.modules.auth.model.UserAccountStatus;
+import interview.guide.modules.auth.repository.UserAccountRepository;
+import interview.guide.common.tenant.TenantContext;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +14,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @Slf4j
@@ -20,13 +24,19 @@ public class LearningReminderService {
   private static final int SCAN_BATCH_SIZE = 100;
 
   private final LearningReminderRepository reminderRepository;
+  private final UserAccountRepository userRepository;
+  private final TransactionTemplate transactionTemplate;
 
   @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
-  @Transactional
   public void scanDueReminders() {
-    int ready = markDueRemindersReady(LocalDateTime.now());
-    if (ready > 0) {
-      log.info("学习提醒已就绪: count={}", ready);
+    LocalDateTime now = LocalDateTime.now();
+    for (Long ownerUserId : userRepository.findIdsByStatus(UserAccountStatus.ACTIVE)) {
+      TenantContext.runAs(ownerUserId, () -> transactionTemplate.executeWithoutResult(status -> {
+        int ready = markDueRemindersReady(now);
+        if (ready > 0) {
+          log.info("当前账户学习提醒已就绪: count={}", ready);
+        }
+      }));
     }
   }
 

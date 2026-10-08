@@ -10,8 +10,7 @@ export interface ResumeAnalysisResponse {
 
 // 存储信息
 export interface StorageInfo {
-  fileKey: string;
-  fileUrl: string;
+  downloadUrl: string;
   resumeId?: number;
 }
 

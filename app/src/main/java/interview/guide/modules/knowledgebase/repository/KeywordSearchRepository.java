@@ -1,16 +1,14 @@
 package interview.guide.modules.knowledgebase.repository;
 
+import interview.guide.common.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Array;
 import java.sql.ResultSet;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,22 +37,11 @@ public class KeywordSearchRepository {
      * @return 命中文档（含 metadata）；paradedb 不可用时返回空列表
      */
     public List<Document> searchByBm25(String query, List<Long> kbIds, int topK) {
-        if (query == null || query.isBlank() || topK <= 0) {
+        if (query == null || query.isBlank() || topK <= 0 || kbIds == null || kbIds.isEmpty()) {
             return List.of();
         }
         try {
-            if (kbIds == null || kbIds.isEmpty()) {
-                return jdbcTemplate.query(
-                    """
-                    SELECT id, content, metadata, paradedb.score(id) AS score
-                    FROM vector_store
-                    WHERE content @@@ ?
-                    ORDER BY score DESC
-                    LIMIT ?
-                    """,
-                    (rs, i) -> mapRow(rs),
-                    query, topK);
-            }
+            Long ownerUserId = TenantContext.requireCurrentTenantId();
             // 用 ANY(?) 传 Long[]；Postgres JDBC 需通过 createArrayOf
             return jdbcTemplate.query(
                 con -> {
@@ -63,14 +50,16 @@ public class KeywordSearchRepository {
                         SELECT id, content, metadata, paradedb.score(id) AS score
                         FROM vector_store
                         WHERE content @@@ ?
+                          AND metadata->>'owner_user_id' = ?
                           AND metadata->>'kb_id' = ANY (?)
                         ORDER BY score DESC
                         LIMIT ?
                         """);
                     ps.setString(1, query);
-                    Long[] kbArr = kbIds.toArray(new Long[0]);
-                    ps.setArray(2, con.createArrayOf("bigint", kbArr));
-                    ps.setInt(3, topK);
+                    ps.setString(2, ownerUserId.toString());
+                    String[] kbArr = kbIds.stream().map(String::valueOf).toArray(String[]::new);
+                    ps.setArray(3, con.createArrayOf("text", kbArr));
+                    ps.setInt(4, topK);
                     return ps;
                 },
                 (rs, i) -> mapRow(rs));

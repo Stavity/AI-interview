@@ -1,6 +1,7 @@
 package interview.guide.modules.interviewschedule.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -11,6 +12,10 @@ public class InterviewScheduleEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @TenantId
+    @Column(name = "owner_user_id", nullable = false, updatable = false)
+    private Long ownerUserId;
 
     @Column(name = "company_name", nullable = false)
     private String companyName;

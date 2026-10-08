@@ -7,6 +7,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.TenantId;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import lombok.EqualsAndHashCode;
@@ -23,6 +24,10 @@ public class QuestionKnowledgeTagEntity {
 
   @EmbeddedId
   private Id id;
+
+  @TenantId
+  @Column(name = "owner_user_id", nullable = false, updatable = false)
+  private Long ownerUserId;
 
   @Column(name = "taxonomy_version", nullable = false)
   private Integer taxonomyVersion;

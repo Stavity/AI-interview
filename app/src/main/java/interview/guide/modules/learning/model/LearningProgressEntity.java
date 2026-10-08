@@ -14,13 +14,18 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.TenantId;
 import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "learning_progress")
+@Table(name = "learning_progress", uniqueConstraints = {
+    @jakarta.persistence.UniqueConstraint(
+        name = "uk_learning_progress_owner_source",
+        columnNames = {"owner_user_id", "skill_source_id"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -35,6 +40,10 @@ public class LearningProgressEntity {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  @TenantId
+  @Column(name = "owner_user_id", nullable = false, updatable = false)
+  private Long ownerUserId;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "skill_source_id", nullable = false)

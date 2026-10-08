@@ -1,6 +1,7 @@
 package interview.guide.common.async;
 import interview.guide.infrastructure.async.*;
 import interview.guide.infrastructure.kafka.KafkaTaskProperties;
+import interview.guide.common.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,7 @@ public class AsyncTaskSubmissionService {
         }
         var task = new AsyncTaskEntity();
         task.setId(id); task.setTaskType(type); task.setBusinessId(businessId); task.setActiveKey(key);
+        task.setOwnerUserId(TenantContext.requireCurrentTenantId());
         task.setState(AsyncTaskState.QUEUED); task.setInputPayload(mapper.writeValueAsString(input));
         task.setMaxAttempts(properties.getMaxAttempts());
         task.setNextRunAt(Instant.now()); task.setCreatedAt(Instant.now()); task.setUpdatedAt(Instant.now());

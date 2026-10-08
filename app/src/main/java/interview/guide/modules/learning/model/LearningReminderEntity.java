@@ -1,6 +1,7 @@
 package interview.guide.modules.learning.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import java.time.LocalDateTime;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,6 +16,7 @@ public class LearningReminderEntity {
   public enum Channel { IN_APP, BROWSER }
   public enum Status { PENDING, READY, DELIVERED, CANCELLED, FAILED }
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+  @TenantId @Column(name = "owner_user_id", nullable = false, updatable = false) private Long ownerUserId;
   @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "task_id", nullable = false) private LearningPlanTaskEntity task;
   @Column(name = "remind_at", nullable = false) private LocalDateTime remindAt;
   @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private Channel channel = Channel.IN_APP;

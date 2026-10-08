@@ -1,6 +1,7 @@
 package interview.guide.modules.voiceinterview.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.TenantId;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,6 +29,10 @@ public class VoiceInterviewEvaluationEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @TenantId
+    @Column(name = "owner_user_id", nullable = false, updatable = false)
+    private Long ownerUserId;
 
     @Column(name = "session_id", unique = true)
     private Long sessionId;

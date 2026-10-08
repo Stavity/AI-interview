@@ -14,7 +14,7 @@ public record ResumeDetailDTO(
     String filename,
     Long fileSize,
     String contentType,
-    String storageUrl,
+    String downloadUrl,
     LocalDateTime uploadedAt,
     Integer accessCount,
     String resumeText,

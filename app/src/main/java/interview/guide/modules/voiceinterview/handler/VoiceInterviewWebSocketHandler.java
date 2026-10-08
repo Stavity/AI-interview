@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import interview.guide.modules.voiceinterview.dto.WebSocketControlMessage;
 import interview.guide.modules.voiceinterview.dto.WebSocketSubtitleMessage;
+import interview.guide.common.tenant.TenantContext;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewMessageEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
@@ -147,6 +148,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        Long ownerUserId = requireOwnerUserId(session);
         String sessionId = extractSessionId(session);
 
         // Increase message size limits for audio streaming
@@ -165,12 +167,11 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
         log.info("WebSocket connection established for session: {}", sessionId);
 
         try {
-            startDashScopeStt(sessionId, safeSession);
-
-            // 发送欢迎消息
-            sendMessage(safeSession, createWelcomeMessage());
-            // 自动开场：面试官先说开场语并直接提出第一个问题（仅首次连接、无历史消息时触发）
-            triggerOpeningQuestionIfNeeded(sessionId, safeSession);
+            TenantContext.runAs(ownerUserId, () -> {
+                startDashScopeStt(sessionId, safeSession);
+                sendMessage(safeSession, createWelcomeMessage());
+                triggerOpeningQuestionIfNeeded(sessionId, safeSession);
+            });
         } catch (Exception e) {
             log.error("Error establishing WebSocket connection for session {}", sessionId, e);
             sendError(safeSession, "初始化语音识别失败: " + e.getMessage());
@@ -215,7 +216,9 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     }
 
     private void triggerOpeningQuestionIfNeeded(String sessionId, WebSocketSession session) {
+        Long ownerUserId = requireOwnerUserId(session);
         voicePipelineExecutor.execute(() -> {
+            TenantContext.runAs(ownerUserId, () -> {
             try {
                 if (session == null || !session.isOpen()) {
                     return;
@@ -256,6 +259,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
             } catch (Exception e) {
                 log.error("Failed to send opening question for session {}", sessionId, e);
             }
+            });
         });
     }
 
@@ -307,6 +311,10 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        TenantContext.runAs(requireOwnerUserId(session), () -> handleTextMessageForOwner(session, message));
+    }
+
+    private void handleTextMessageForOwner(WebSocketSession session, TextMessage message) {
         String sessionId = extractSessionId(session);
 
         try {
@@ -371,6 +379,10 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
+        TenantContext.runAs(requireOwnerUserId(session), () -> closeConnectionForOwner(session, status));
+    }
+
+    private void closeConnectionForOwner(WebSocketSession session, CloseStatus status) {
         String sessionId = extractSessionId(session);
         try {
             sessions.remove(sessionId);
@@ -418,10 +430,11 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     }
 
     private void startDashScopeStt(String sessionId, WebSocketSession session) {
+        Long ownerUserId = requireOwnerUserId(session);
         sttService.startTranscription(
                 sessionId,
-                text -> handleSttResult(sessionId, text, true),
-                text -> handleSttResult(sessionId, text, false),
+                text -> TenantContext.runAs(ownerUserId, () -> handleSttResult(sessionId, text, true)),
+                text -> TenantContext.runAs(ownerUserId, () -> handleSttResult(sessionId, text, false)),
                 () -> sendAsrReady(session),
                 error -> {
                     log.error("STT error for session {}", sessionId, error);
@@ -433,8 +446,10 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     }
 
     private void scheduleAsrReadyCheck(String sessionId, WebSocketSession session, int retryCount) {
+        Long ownerUserId = requireOwnerUserId(session);
         utteranceMergeScheduler.schedule(
-            () -> checkAsrReadyOrRetry(sessionId, session, retryCount),
+            () -> TenantContext.runAs(ownerUserId,
+                () -> checkAsrReadyOrRetry(sessionId, session, retryCount)),
             ASR_READY_CHECK_DELAY_SECONDS,
             TimeUnit.SECONDS
         );
@@ -467,10 +482,11 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
         if (session == null || !session.isOpen()) {
             return;
         }
+        Long ownerUserId = requireOwnerUserId(session);
         sttService.restartTranscription(
                 sessionId,
-                text -> handleSttResult(sessionId, text, true),
-                text -> handleSttResult(sessionId, text, false),
+                text -> TenantContext.runAs(ownerUserId, () -> handleSttResult(sessionId, text, true)),
+                text -> TenantContext.runAs(ownerUserId, () -> handleSttResult(sessionId, text, false)),
                 () -> sendAsrReady(session),
                 error -> {
                     log.error("STT error for session {}", sessionId, error);
@@ -604,6 +620,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
 
         // 提交到虚拟线程执行阻塞的 LLM+TTS 管线，立即释放调度器线程
         voicePipelineExecutor.execute(() -> {
+            TenantContext.runAs(requireOwnerUserId(session), () -> {
             state.setProcessingThread(Thread.currentThread());
             try {
                 triggerLlmResponse(sessionId, session, state);
@@ -611,6 +628,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                 state.isProcessing().set(false);
                 state.setProcessingThread(null);
             }
+            });
         });
     }
 
@@ -1134,6 +1152,11 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
         long now = System.currentTimeMillis();
 
         lastActivityTime.forEach((sessionId, lastTime) -> {
+            WebSocketSession ownerSession = sessions.get(sessionId);
+            if (ownerSession == null) {
+                return;
+            }
+            TenantContext.runAs(requireOwnerUserId(ownerSession), () -> {
             long elapsed = now - lastTime;
 
             // Send warning at 4:30
@@ -1146,19 +1169,8 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                     sessionId, PAUSE_TIMEOUT_MS / 60000);
                 handlePauseTimeout(sessionId);
             }
+            });
         });
-    }
-
-    @Scheduled(fixedRate = 60_000)
-    public void cleanupStaleSessions() {
-        try {
-            int cleaned = interviewService.cleanupStaleSessions();
-            if (cleaned > 0) {
-                log.info("Stale session cleanup: {} sessions cleaned", cleaned);
-            }
-        } catch (Exception e) {
-            log.error("Error during stale session cleanup", e);
-        }
     }
 
     /**
@@ -1222,6 +1234,15 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     private String extractSessionId(WebSocketSession session) {
         String path = session.getUri().getPath();
         return path.substring(path.lastIndexOf('/') + 1);
+    }
+
+    private Long requireOwnerUserId(WebSocketSession session) {
+        Object owner = session.getAttributes()
+            .get(AuthenticatedWebSocketHandshakeInterceptor.OWNER_USER_ID_ATTRIBUTE);
+        if (owner instanceof Long ownerUserId && ownerUserId > 0) {
+            return ownerUserId;
+        }
+        throw new IllegalStateException("Authenticated owner context is missing from WebSocket session");
     }
 
     /**

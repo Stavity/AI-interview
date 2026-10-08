@@ -2,6 +2,7 @@ package interview.guide.modules.knowledgebase.repository;
 
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.common.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -30,6 +31,7 @@ public class VectorRepository {
      * @return 删除的行数
      */
     public int deleteByKnowledgeBaseId(Long knowledgeBaseId) {
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
         log.info("开始删除知识库向量数据: kbId={}", knowledgeBaseId);
         
         /* 
@@ -40,13 +42,14 @@ public class VectorRepository {
          */
         String sql = """
             DELETE FROM vector_store
-            WHERE metadata->>'kb_id' = ?
-               OR (metadata->>'kb_id_long' IS NOT NULL AND (metadata->>'kb_id_long')::bigint = ?)
+            WHERE metadata->>'owner_user_id' = ?
+              AND (metadata->>'kb_id' = ?
+               OR (metadata->>'kb_id_long' IS NOT NULL AND (metadata->>'kb_id_long')::bigint = ?))
             """;
         
         try {
             // 第一个参数转为 String 匹配 kb_id，第二个参数保持 Long 匹配 kb_id_long
-            int deletedRows = jdbcTemplate.update(sql, knowledgeBaseId.toString(), knowledgeBaseId);
+            int deletedRows = jdbcTemplate.update(sql, ownerUserId.toString(), knowledgeBaseId.toString(), knowledgeBaseId);
             
             if (deletedRows > 0) {
                 log.info("成功删除知识库向量数据: kbId={}, 删除行数={}", knowledgeBaseId, deletedRows);
@@ -63,16 +66,36 @@ public class VectorRepository {
         }
     }
 
+    /** Also removes unpromoted chunks associated with this owner's KB. */
+    public int deleteAllByKnowledgeBaseId(Long knowledgeBaseId) {
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
+        String sql = """
+            DELETE FROM vector_store
+            WHERE metadata->>'owner_user_id' = ?
+              AND (metadata->>'kb_id' = ?
+                OR metadata->>'kb_target_id' = ?
+                OR (metadata->>'kb_id_long' IS NOT NULL
+                    AND (metadata->>'kb_id_long')::bigint = ?))
+            """;
+        try {
+            return jdbcTemplate.update(sql, ownerUserId.toString(), knowledgeBaseId.toString(),
+                knowledgeBaseId.toString(), knowledgeBaseId);
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.KNOWLEDGE_BASE_DELETE_FAILED, "删除知识库向量数据失败");
+        }
+    }
+
     /**
      * 删除指定向量化任务写入的临时向量数据。
      */
     public int deleteByVectorJobId(String jobId) {
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
         String sql = """
             DELETE FROM vector_store
-            WHERE metadata->>'kb_vector_job_id' = ?
+            WHERE metadata->>'owner_user_id' = ? AND metadata->>'kb_vector_job_id' = ?
             """;
         try {
-            int deletedRows = jdbcTemplate.update(sql, jobId);
+            int deletedRows = jdbcTemplate.update(sql, ownerUserId.toString(), jobId);
             log.info("已清理临时向量数据: jobId={}, 删除行数={}", jobId, deletedRows);
             return deletedRows;
         } catch (Exception e) {
@@ -86,6 +109,7 @@ public class VectorRepository {
      * 将临时向量任务提升为当前知识库的正式向量数据。
      */
     public int promoteVectorJob(Long knowledgeBaseId, String jobId) {
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
         String sql = """
             UPDATE vector_store
             SET metadata = (jsonb_set(
@@ -94,10 +118,10 @@ public class VectorRepository {
                     to_jsonb(?::text),
                     true
                 ) - 'kb_vector_job_id' - 'kb_target_id')::json
-            WHERE metadata->>'kb_vector_job_id' = ?
+            WHERE metadata->>'owner_user_id' = ? AND metadata->>'kb_vector_job_id' = ?
             """;
         try {
-            int updatedRows = jdbcTemplate.update(sql, knowledgeBaseId.toString(), jobId);
+            int updatedRows = jdbcTemplate.update(sql, knowledgeBaseId.toString(), ownerUserId.toString(), jobId);
             log.info("临时向量数据已提升为正式数据: kbId={}, jobId={}, 更新行数={}",
                 knowledgeBaseId, jobId, updatedRows);
             return updatedRows;
@@ -113,10 +137,11 @@ public class VectorRepository {
      * 回填知识库的 chunk 数量（向量化完成后调用）。
      */
     public void updateChunkCount(Long knowledgeBaseId, int chunkCount) {
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
         try {
             jdbcTemplate.update(
-                "UPDATE knowledge_bases SET chunk_count = ? WHERE id = ?",
-                chunkCount, knowledgeBaseId);
+                "UPDATE knowledge_bases SET chunk_count = ? WHERE id = ? AND owner_user_id = ?",
+                chunkCount, knowledgeBaseId, ownerUserId);
         } catch (Exception e) {
             log.warn("回填 chunk_count 失败（不影响向量化结果）: kbId={}, error={}",
                 knowledgeBaseId, e.getMessage());
@@ -137,6 +162,7 @@ public class VectorRepository {
             return List.of();
         }
         String[] ids = hitChunkIds.toArray(new String[0]);
+        Long ownerUserId = TenantContext.requireCurrentTenantId();
         try {
             return jdbcTemplate.query(
                 con -> {
@@ -145,17 +171,20 @@ public class VectorRepository {
                         WITH hit AS (
                           SELECT (metadata->>'kb_id')::bigint AS kb_id,
                                  (metadata->>'chunk_index')::int AS idx
-                          FROM vector_store WHERE id::text = ANY (?)
+                          FROM vector_store WHERE id::text = ANY (?) AND metadata->>'owner_user_id' = ?
                         )
                         SELECT v.id::text AS id, v.content, v.metadata
                         FROM vector_store v
                         JOIN hit h ON (v.metadata->>'kb_id')::bigint = h.kb_id
-                        WHERE (v.metadata->>'chunk_index')::int BETWEEN h.idx - ? AND h.idx + ?
+                        WHERE v.metadata->>'owner_user_id' = ?
+                          AND (v.metadata->>'chunk_index')::int BETWEEN h.idx - ? AND h.idx + ?
                         ORDER BY (v.metadata->>'kb_id')::bigint, (v.metadata->>'chunk_index')::int
                         """);
                     ps.setArray(1, con.createArrayOf("text", ids));
-                    ps.setInt(2, window);
-                    ps.setInt(3, window);
+                    ps.setString(2, ownerUserId.toString());
+                    ps.setString(3, ownerUserId.toString());
+                    ps.setInt(4, window);
+                    ps.setInt(5, window);
                     return ps;
                 },
                 (rs, i) -> {

@@ -95,6 +95,25 @@ public class ResumeController {
         }
     }
 
+    /** 下载当前账户自己的简历原文件。 */
+    @GetMapping("/api/resumes/{id}/download")
+    public ResponseEntity<byte[]> downloadResume(@PathVariable Long id) {
+        var file = historyService.downloadResume(id);
+        String filename = URLEncoder.encode(file.filename(), StandardCharsets.UTF_8).replace("+", "%20");
+        MediaType contentType = MediaType.APPLICATION_OCTET_STREAM;
+        if (file.contentType() != null) {
+            try {
+                contentType = MediaType.parseMediaType(file.contentType());
+            } catch (org.springframework.http.InvalidMediaTypeException ignored) {
+                log.warn("简历文件类型无效，回退为二进制下载: resumeId={}", id);
+            }
+        }
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + filename)
+            .contentType(contentType)
+            .body(file.content());
+    }
+
     /**
      * 删除简历
      *

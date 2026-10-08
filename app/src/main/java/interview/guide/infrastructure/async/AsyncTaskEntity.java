@@ -10,6 +10,7 @@ import java.util.UUID;
 @Entity @Table(name = "async_task") @Getter @Setter
 public class AsyncTaskEntity {
     @Id private UUID id;
+    @Column(name = "owner_user_id", nullable = false, updatable = false) private Long ownerUserId;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 40) private AsyncTaskType taskType;
     @Column(nullable = false, length = 128) private String businessId;
     @Column(unique = true, length = 200) private String activeKey;

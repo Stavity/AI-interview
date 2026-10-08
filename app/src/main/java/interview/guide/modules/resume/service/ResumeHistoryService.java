@@ -3,6 +3,7 @@ package interview.guide.modules.resume.service;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.infrastructure.export.PdfExportService;
+import interview.guide.infrastructure.file.FileStorageService;
 import interview.guide.infrastructure.mapper.InterviewMapper;
 import interview.guide.infrastructure.mapper.ResumeMapper;
 import interview.guide.modules.interview.model.InterviewHistoryItemDTO;
@@ -38,6 +39,7 @@ public class ResumeHistoryService {
     private final ObjectMapper objectMapper;
     private final ResumeMapper resumeMapper;
     private final InterviewMapper interviewMapper;
+    private final FileStorageService fileStorageService;
 
     /**
      * 获取所有简历列表
@@ -70,7 +72,8 @@ public class ResumeHistoryService {
                 lastAnalyzedAt,
                 interviewCount,
                 resume.getAnalyzeStatus(),
-                resume.getAnalyzeError()
+                resume.getAnalyzeError(),
+                hasStoredFile(resume) ? "/api/resumes/" + resume.getId() + "/download" : null
             );
         }).toList();
     }
@@ -104,7 +107,7 @@ public class ResumeHistoryService {
             resume.getOriginalFilename(),
             resume.getFileSize(),
             resume.getContentType(),
-            resume.getStorageUrl(),
+            hasStoredFile(resume) ? "/api/resumes/" + resume.getId() + "/download" : null,
             resume.getUploadedAt(),
             resume.getAccessCount(),
             resume.getResumeText(),
@@ -113,6 +116,23 @@ public class ResumeHistoryService {
             analysisHistory,
             interviewHistory
         );
+    }
+
+    public ResumeDownload downloadResume(Long id) {
+        ResumeEntity resume = resumePersistenceService.findById(id)
+            .orElseThrow(() -> new BusinessException(ErrorCode.RESUME_NOT_FOUND));
+        if (!hasStoredFile(resume)) {
+            throw new BusinessException(ErrorCode.STORAGE_DOWNLOAD_FAILED, "简历文件不存在");
+        }
+        return new ResumeDownload(
+            fileStorageService.downloadFile(resume.getStorageKey()),
+            resume.getOriginalFilename(),
+            resume.getContentType()
+        );
+    }
+
+    private boolean hasStoredFile(ResumeEntity resume) {
+        return resume.getStorageKey() != null && !resume.getStorageKey().isBlank();
     }
 
     /**
@@ -181,5 +201,6 @@ public class ResumeHistoryService {
      * PDF导出结果
      */
     public record ExportResult(byte[] pdfBytes, String filename) {}
+    public record ResumeDownload(byte[] content, String filename, String contentType) {}
 }
 

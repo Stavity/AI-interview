@@ -56,7 +56,6 @@ public class VoiceInterviewService {
 
     private static final String SESSION_CACHE_KEY_PREFIX = "voice:interview:session:";
     private static final int CACHE_TTL_HOURS = 1;
-    private static final String DEFAULT_USER_ID = "default";
 
     /**
      * Create a new voice interview session
@@ -73,7 +72,6 @@ public class VoiceInterviewService {
             : null;
 
         VoiceInterviewSessionEntity session = VoiceInterviewSessionEntity.builder()
-                .userId(DEFAULT_USER_ID)
                 .roleType(effectiveSkillId)
                 .skillId(effectiveSkillId)
                 .difficulty(request.getDifficulty() != null ? request.getDifficulty() : InterviewDefaults.DIFFICULTY)
@@ -413,20 +411,19 @@ public class VoiceInterviewService {
      * Get all sessions for a user
      * 获取用户所有会话
      *
-     * @param userId User ID (optional, defaults to DEFAULT_USER_ID)
+     * @param status Optional status filter; owner is taken from the authenticated tenant context.
      * @param status Filter by status (optional)
      * @return List of session metadata
      */
-    public List<SessionMetaDTO> getAllSessions(String userId, String status) {
-        userId = userId != null ? userId : DEFAULT_USER_ID;
+    public List<SessionMetaDTO> getAllSessions(String status) {
 
         List<VoiceInterviewSessionEntity> sessions;
         if (status != null && !status.isEmpty()) {
             VoiceInterviewSessionStatus statusEnum =
                 VoiceInterviewSessionStatus.valueOf(status.toUpperCase());
-            sessions = sessionRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, statusEnum);
+            sessions = sessionRepository.findByStatusOrderByUpdatedAtDesc(statusEnum);
         } else {
-            sessions = sessionRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+            sessions = sessionRepository.findAllByOrderByUpdatedAtDesc();
         }
 
         return sessions.stream()

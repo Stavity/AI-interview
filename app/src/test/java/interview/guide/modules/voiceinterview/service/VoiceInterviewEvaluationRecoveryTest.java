@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -58,6 +59,9 @@ class VoiceInterviewEvaluationRecoveryTest {
     private LlmProviderRegistry llmProviderRegistry;
 
     @Mock
+    private ObjectMapper objectMapper;
+
+    @Mock
     private RBucket<VoiceInterviewSessionEntity> sessionBucket;
 
     private VoiceInterviewService voiceInterviewService;
@@ -71,7 +75,8 @@ class VoiceInterviewEvaluationRecoveryTest {
             redissonClient,
             properties,
             voiceEvaluateTaskSubmission,
-            llmProviderRegistry
+            llmProviderRegistry,
+            objectMapper
         );
         lenient().when(redissonClient.<VoiceInterviewSessionEntity>getBucket(anyString()))
             .thenReturn(sessionBucket);

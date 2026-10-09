@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -20,4 +21,10 @@ public class VoiceInterviewMessageDTO {
     private String aiGeneratedText;
     private LocalDateTime timestamp;
     private Integer sequenceNum;
+    private Integer questionDifficultyLevel;
+    private String questionType;
+    private String primaryKnowledgeCode;
+    private List<String> secondaryKnowledgeCodes;
+    private Integer taxonomyVersion;
+    private String taggingStatus;
 }

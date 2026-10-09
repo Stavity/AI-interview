@@ -54,6 +54,24 @@ public class VoiceInterviewMessageEntity {
     @Column(name = "sequence_num")
     private Integer sequenceNum;
 
+    @Column(name = "question_difficulty_level")
+    private Integer questionDifficultyLevel;
+
+    @Column(name = "question_type", length = 32)
+    private String questionType;
+
+    @Column(name = "primary_knowledge_code", length = 255)
+    private String primaryKnowledgeCode;
+
+    @Column(name = "secondary_knowledge_codes_json", columnDefinition = "TEXT")
+    private String secondaryKnowledgeCodesJson;
+
+    @Column(name = "taxonomy_version")
+    private Integer taxonomyVersion;
+
+    @Column(name = "tagging_status", length = 32)
+    private String taggingStatus;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RedissonClient;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +43,8 @@ class VoiceInterviewSummaryPersistenceTest {
   private VoiceEvaluateTaskSubmission evaluateTaskSubmission;
   @Mock
   private LlmProviderRegistry llmProviderRegistry;
+  @Mock
+  private ObjectMapper objectMapper;
 
   private VoiceInterviewService service;
 
@@ -54,7 +57,8 @@ class VoiceInterviewSummaryPersistenceTest {
         redissonClient,
         properties,
         evaluateTaskSubmission,
-        llmProviderRegistry
+        llmProviderRegistry,
+        objectMapper
     );
   }
 

@@ -14,6 +14,7 @@ import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
 import interview.guide.modules.voiceinterview.service.DashscopeLlmService;
 import interview.guide.modules.voiceinterview.service.VoiceInterviewService;
+import interview.guide.modules.voiceinterview.service.VoiceQuestionTaggingService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +64,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     private final QwenTtsService ttsService;
     private final DashscopeLlmService llmService;
     private final VoiceInterviewService interviewService;
+    private final VoiceQuestionTaggingService voiceQuestionTaggingService;
     private final VoiceContextCompressor voiceContextCompressor;
     private final VoiceInterviewProperties voiceInterviewProperties;
     private final ObjectProvider<MeterRegistry> meterRegistryProvider;
@@ -246,7 +248,7 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                 }
 
                 // 先落库再推前端，确保用户提交时 DB 中已有该条消息
-                saveMessage(sessionId, null, aiReply);
+                saveMessage(sessionId, null, aiReply, sessionEntity);
                 sendTextMessage(session, aiReply, true);
 
                 // 语音随后下发
@@ -728,8 +730,8 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                 }
 
                 sendSubtitle(session, userText, true);
+                saveMessage(sessionId, userText, aiReply, sessionEntity);
                 sendTextMessage(session, aiReply, true);
-                saveMessage(sessionId, userText, aiReply);
 
                 // 按顺序收集所有 TTS 结果（带超时，防止单句 TTS 挂死阻塞整条管道）
                 if (chunkEmitter != null) {
@@ -824,8 +826,8 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
                 }
 
                 sendSubtitle(session, userText, true);
+                saveMessage(sessionId, userText, aiReply, sessionEntity);
                 sendTextMessage(session, aiReply, true);
-                saveMessage(sessionId, userText, aiReply);
 
                 long ttsStartNanos = System.nanoTime();
                 log.info("[Session: {}] Starting TTS synthesis for text (length: {})",
@@ -1302,13 +1304,12 @@ public class VoiceInterviewWebSocketHandler extends TextWebSocketHandler impleme
     /**
      * Save message to database
      */
-    private void saveMessage(String sessionId, String userText, String aiText) {
-        try {
-            interviewService.saveMessage(sessionId, userText, aiText);
-            log.debug("Message saved to database for session: {}", sessionId);
-        } catch (Exception e) {
-            log.error("Error saving message for session {}", sessionId, e);
-        }
+    private void saveMessage(String sessionId, String userText, String aiText,
+                             VoiceInterviewSessionEntity sessionEntity) {
+        var tagSnapshot = voiceQuestionTaggingService.tagQuestion(
+            sessionEntity.getLlmProvider(), sessionEntity.getSkillId(), aiText);
+        interviewService.saveMessage(sessionId, userText, aiText, tagSnapshot);
+        log.debug("Message saved to database for session: {}", sessionId);
     }
 
     /**

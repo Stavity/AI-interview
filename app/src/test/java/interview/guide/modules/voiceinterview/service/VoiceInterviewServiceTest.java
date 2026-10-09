@@ -494,7 +494,8 @@ class VoiceInterviewServiceTest {
                     ));
 
             // When
-            voiceInterviewService.saveMessage(sessionId.toString(), userText, aiText);
+            voiceInterviewService.saveMessage(sessionId.toString(), userText, aiText,
+                verifiedTagSnapshot());
 
             // Then
             ArgumentCaptor<VoiceInterviewMessageEntity> captor =
@@ -562,11 +563,17 @@ class VoiceInterviewServiceTest {
 
             // When & Then
             assertDoesNotThrow(() ->
-                    voiceInterviewService.saveMessage(sessionId.toString(), "user", "ai")
+                    voiceInterviewService.saveMessage(sessionId.toString(), "user", "ai",
+                        verifiedTagSnapshot())
             );
 
             verify(messageRepository, never()).save(any());
         }
+    }
+
+    private static VoiceQuestionTagSnapshot verifiedTagSnapshot() {
+        return new VoiceQuestionTagSnapshot(
+            3, "PROJECT", "TECH_KNOWLEDGE.JAVA", List.of(), 1, "VERIFIED");
     }
 
     // ==================== 缓存测试 ====================

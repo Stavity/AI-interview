@@ -23,6 +23,8 @@ import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -53,6 +55,7 @@ public class VoiceInterviewService {
     private final VoiceInterviewProperties properties;
     private final VoiceEvaluateTaskSubmission voiceEvaluateTaskSubmission;
     private final LlmProviderRegistry llmProviderRegistry;
+    private final ObjectMapper objectMapper;
 
     private static final String SESSION_CACHE_KEY_PREFIX = "voice:interview:session:";
     private static final int CACHE_TTL_HOURS = 1;
@@ -237,7 +240,8 @@ public class VoiceInterviewService {
      * @param aiText    AI's generated response text
      */
     @Transactional
-    public void saveMessage(String sessionId, String userText, String aiText) {
+    public void saveMessage(String sessionId, String userText, String aiText,
+                            VoiceQuestionTagSnapshot tagSnapshot) {
         Long sessionIdLong = parseSessionId(sessionId);
         VoiceInterviewSessionEntity session = getSession(sessionIdLong);
 
@@ -254,6 +258,10 @@ public class VoiceInterviewService {
         if (normalizedAiText == null) {
             return;
         }
+        if (tagSnapshot == null) {
+            throw new BusinessException(ErrorCode.INTERVIEW_QUESTION_GENERATION_FAILED,
+                "语音题目缺少已验证的知识标签快照");
+        }
 
         VoiceInterviewMessageEntity message = VoiceInterviewMessageEntity.builder()
                 .sessionId(sessionIdLong)
@@ -264,6 +272,13 @@ public class VoiceInterviewService {
                     : null)
                 .aiGeneratedText(normalizedAiText)
                 .sequenceNum(getNextSequenceNum(sessionIdLong))
+                .questionDifficultyLevel(tagSnapshot.difficultyLevel())
+                .questionType(tagSnapshot.questionType())
+                .primaryKnowledgeCode(tagSnapshot.primaryKnowledgeCode())
+                .secondaryKnowledgeCodesJson(
+                    objectMapper.writeValueAsString(tagSnapshot.secondaryKnowledgeCodes()))
+                .taxonomyVersion(tagSnapshot.taxonomyVersion())
+                .taggingStatus(tagSnapshot.taggingStatus())
                 .build();
 
         messageRepository.save(message);
@@ -342,8 +357,27 @@ public class VoiceInterviewService {
                 .aiGeneratedText(msg.getAiGeneratedText())
                 .timestamp(msg.getTimestamp())
                 .sequenceNum(msg.getSequenceNum())
+                .questionDifficultyLevel(msg.getQuestionDifficultyLevel())
+                .questionType(msg.getQuestionType())
+                .primaryKnowledgeCode(msg.getPrimaryKnowledgeCode())
+                .secondaryKnowledgeCodes(readSecondaryKnowledgeCodes(msg))
+                .taxonomyVersion(msg.getTaxonomyVersion())
+                .taggingStatus(msg.getTaggingStatus())
                 .build())
             .collect(Collectors.toList());
+    }
+
+    private List<String> readSecondaryKnowledgeCodes(VoiceInterviewMessageEntity message) {
+        String json = message.getSecondaryKnowledgeCodesJson();
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            log.warn("Invalid voice question secondary tag snapshot: messageId={}", message.getId());
+            return List.of();
+        }
     }
 
     /**

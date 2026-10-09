@@ -8,6 +8,7 @@ import interview.guide.modules.voiceinterview.service.DashscopeLlmService;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
 import interview.guide.modules.voiceinterview.service.VoiceInterviewService;
+import interview.guide.modules.voiceinterview.service.VoiceQuestionTaggingService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,8 @@ class VoiceInterviewWebSocketHandlerTest {
   private DashscopeLlmService llmService;
   @Mock
   private VoiceInterviewService interviewService;
+  @Mock
+  private VoiceQuestionTaggingService voiceQuestionTaggingService;
   @Mock
   private VoiceContextCompressor voiceContextCompressor;
   @Mock
@@ -143,6 +146,7 @@ class VoiceInterviewWebSocketHandlerTest {
         ttsService,
         llmService,
         interviewService,
+        voiceQuestionTaggingService,
         voiceContextCompressor,
         properties,
         meterRegistryProvider

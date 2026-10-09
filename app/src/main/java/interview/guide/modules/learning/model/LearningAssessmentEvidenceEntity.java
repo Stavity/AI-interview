@@ -28,8 +28,11 @@ public class LearningAssessmentEvidenceEntity {
   @Column(name = "source_session_id", nullable = false, length = 64)
   private String sourceSessionId;
 
-  @Column(name = "source_answer_id", nullable = false)
+  @Column(name = "source_answer_id")
   private Long sourceAnswerId;
+
+  @Column(name = "source_voice_message_id")
+  private Long sourceVoiceMessageId;
 
   @Column(name = "source_task_id")
   private UUID sourceTaskId;
@@ -69,6 +72,7 @@ public class LearningAssessmentEvidenceEntity {
   public String getSourceType() { return sourceType; }
   public String getSourceSessionId() { return sourceSessionId; }
   public Long getSourceAnswerId() { return sourceAnswerId; }
+  public Long getSourceVoiceMessageId() { return sourceVoiceMessageId; }
   public UUID getSourceTaskId() { return sourceTaskId; }
   public long getEvaluationVersion() { return evaluationVersion; }
   public int getQuestionIndex() { return questionIndex; }

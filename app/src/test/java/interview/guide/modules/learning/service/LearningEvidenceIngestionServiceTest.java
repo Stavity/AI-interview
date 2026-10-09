@@ -1,10 +1,12 @@
 package interview.guide.modules.learning.service;
 
 import interview.guide.common.tenant.TenantContext;
+import interview.guide.common.evaluation.EvaluationReport;
 import interview.guide.modules.interview.model.InterviewAnswerEntity;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO;
 import interview.guide.modules.learning.repository.LearningAssessmentEvidenceRepository;
+import interview.guide.modules.learning.model.VoiceQuestionEvidenceSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -66,6 +68,47 @@ class LearningEvidenceIngestionServiceTest {
         anyString(), anyString(), anyInt(), any(LocalDateTime.class), anyString());
   }
 
+  @Test
+  void persistsVoiceEvidenceAgainstFrozenMessageAndTaskVersion() {
+    var service = new LearningEvidenceIngestionService(repository);
+    UUID taskId = UUID.randomUUID();
+    when(repository.insertVoiceInterviewEvidence(
+        anyLong(), anyString(), anyLong(), any(), anyLong(), anyInt(), anyInt(),
+        anyString(), anyString(), anyInt(), any(LocalDateTime.class), anyString()))
+        .thenReturn(1);
+    var source = new VoiceQuestionEvidenceSource(
+        501L, 0, 11, "ROOT.JAVA.COLLECTION",
+        List.of("ROOT.JAVA.GENERICS", "ROOT.JAVA.GENERICS"), "VERIFIED");
+
+    int inserted = TenantContext.callAs(7L, () -> service.persistVoiceInterviewEvidence(
+        "88", List.of(source), voiceReport(0, 82, "clear"), taskId, 5L));
+
+    assertThat(inserted).isEqualTo(2);
+    verify(repository).insertVoiceInterviewEvidence(
+        eq(7L), eq("88"), eq(501L), eq(taskId), eq(5L), eq(0), eq(11),
+        eq("ROOT.JAVA.COLLECTION"), eq("PRIMARY"), eq(82),
+        any(LocalDateTime.class), anyString());
+    verify(repository).insertVoiceInterviewEvidence(
+        eq(7L), eq("88"), eq(501L), eq(taskId), eq(5L), eq(0), eq(11),
+        eq("ROOT.JAVA.GENERICS"), eq("SECONDARY"), eq(82),
+        any(LocalDateTime.class), anyString());
+  }
+
+  @Test
+  void skipsVoiceEvidenceWithoutVerifiedFrozenTags() {
+    var service = new LearningEvidenceIngestionService(repository);
+    var source = new VoiceQuestionEvidenceSource(
+        501L, 0, 11, "ROOT.JAVA.COLLECTION", List.of(), "REVIEW_REQUIRED");
+
+    int inserted = TenantContext.callAs(7L, () -> service.persistVoiceInterviewEvidence(
+        "88", List.of(source), voiceReport(0, 82, "clear"), UUID.randomUUID(), 1L));
+
+    assertThat(inserted).isZero();
+    verify(repository, never()).insertVoiceInterviewEvidence(
+        anyLong(), anyString(), anyLong(), any(), anyLong(), anyInt(), anyInt(),
+        anyString(), anyString(), anyInt(), any(LocalDateTime.class), anyString());
+  }
+
   private static InterviewQuestionDTO question(String taggingStatus) {
     return new InterviewQuestionDTO(
         0, "Explain collections", "JAVA", "Java", "collections", "answer", null, null,
@@ -85,6 +128,14 @@ class LearningEvidenceIngestionServiceTest {
     return new InterviewReportDTO(
         "session-1", 1, score, List.of(),
         List.of(new InterviewReportDTO.QuestionEvaluation(
+            questionIndex, "Explain collections", "Java", "answer", score, feedback)),
+        "overall", List.of(), List.of(), List.of());
+  }
+
+  private static EvaluationReport voiceReport(int questionIndex, int score, String feedback) {
+    return new EvaluationReport(
+        "88", 1, score, List.of(),
+        List.of(new EvaluationReport.QuestionEvaluation(
             questionIndex, "Explain collections", "Java", "answer", score, feedback)),
         "overall", List.of(), List.of(), List.of());
   }

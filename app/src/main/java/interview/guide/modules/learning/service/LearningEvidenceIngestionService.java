@@ -1,10 +1,12 @@
 package interview.guide.modules.learning.service;
 
 import interview.guide.common.tenant.TenantContext;
+import interview.guide.common.evaluation.EvaluationReport;
 import interview.guide.modules.interview.model.InterviewAnswerEntity;
 import interview.guide.modules.interview.model.InterviewQuestionDTO;
 import interview.guide.modules.interview.model.InterviewReportDTO;
 import interview.guide.modules.learning.repository.LearningAssessmentEvidenceRepository;
+import interview.guide.modules.learning.model.VoiceQuestionEvidenceSource;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -61,6 +63,39 @@ public class LearningEvidenceIngestionService {
     return inserted;
   }
 
+  public int persistVoiceInterviewEvidence(
+      String sessionId,
+      List<VoiceQuestionEvidenceSource> sources,
+      EvaluationReport report,
+      UUID taskId,
+      long evaluationVersion
+  ) {
+    long ownerUserId = TenantContext.requireCurrentTenantId();
+    Map<Integer, VoiceQuestionEvidenceSource> sourceByIndex = sources.stream()
+        .collect(Collectors.toMap(
+            VoiceQuestionEvidenceSource::questionIndex, Function.identity(), (a, b) -> a));
+    LocalDateTime assessedAt = LocalDateTime.now();
+    int inserted = 0;
+
+    for (EvaluationReport.QuestionEvaluation evaluation : report.questionDetails()) {
+      VoiceQuestionEvidenceSource source = sourceByIndex.get(evaluation.questionIndex());
+      if (!isEligible(source, evaluation)) {
+        continue;
+      }
+      for (TaggedNode node : taggedNodes(
+          source.primaryKnowledgeCode(), source.secondaryKnowledgeCodes())) {
+        String fingerprint = fingerprint(
+            sessionId, source.sourceMessageId(), evaluation.questionIndex(), evaluation.score(),
+            evaluation.feedback(), source.taxonomyVersion(), node.code(), node.role());
+        inserted += repository.insertVoiceInterviewEvidence(
+            ownerUserId, sessionId, source.sourceMessageId(), taskId, evaluationVersion,
+            evaluation.questionIndex(), source.taxonomyVersion(), node.code(), node.role(),
+            evaluation.score(), assessedAt, fingerprint);
+      }
+    }
+    return inserted;
+  }
+
   private static boolean isEligible(
       InterviewQuestionDTO question,
       InterviewAnswerEntity answer,
@@ -79,17 +114,37 @@ public class LearningEvidenceIngestionService {
   }
 
   private static List<TaggedNode> taggedNodes(InterviewQuestionDTO question) {
+    return taggedNodes(question.primaryKnowledgeCode(), question.secondaryKnowledgeCodes());
+  }
+
+  private static List<TaggedNode> taggedNodes(String primaryCode, List<String> secondaryCodes) {
     List<TaggedNode> result = new ArrayList<>();
     LinkedHashSet<String> seen = new LinkedHashSet<>();
-    String primary = question.primaryKnowledgeCode().trim();
+    String primary = primaryCode.trim();
     seen.add(primary);
     result.add(new TaggedNode(primary, "PRIMARY"));
-    for (String secondary : question.secondaryKnowledgeCodes()) {
+    for (String secondary : secondaryCodes) {
       if (secondary != null && !secondary.isBlank() && seen.add(secondary.trim())) {
         result.add(new TaggedNode(secondary.trim(), "SECONDARY"));
       }
     }
     return result;
+  }
+
+  private static boolean isEligible(
+      VoiceQuestionEvidenceSource source,
+      EvaluationReport.QuestionEvaluation evaluation
+  ) {
+    return source != null
+        && source.sourceMessageId() != null
+        && source.sourceMessageId() > 0
+        && "VERIFIED".equals(source.taggingStatus())
+        && source.taxonomyVersion() != null
+        && source.taxonomyVersion() > 0
+        && source.primaryKnowledgeCode() != null
+        && !source.primaryKnowledgeCode().isBlank()
+        && evaluation.score() >= 0
+        && evaluation.score() <= 100;
   }
 
   private static String fingerprint(
@@ -100,12 +155,26 @@ public class LearningEvidenceIngestionService {
       String nodeCode,
       String role
   ) {
+    return fingerprint(sessionId, answerId, evaluation.questionIndex(), evaluation.score(),
+        evaluation.feedback(), taxonomyVersion, nodeCode, role);
+  }
+
+  private static String fingerprint(
+      String sessionId,
+      long sourceRecordId,
+      int questionIndex,
+      int score,
+      String feedback,
+      int taxonomyVersion,
+      String nodeCode,
+      String role
+  ) {
     String value = String.join("\u001f",
         sessionId,
-        Long.toString(answerId),
-        Integer.toString(evaluation.questionIndex()),
-        Integer.toString(evaluation.score()),
-        evaluation.feedback() == null ? "" : evaluation.feedback(),
+        Long.toString(sourceRecordId),
+        Integer.toString(questionIndex),
+        Integer.toString(score),
+        feedback == null ? "" : feedback,
         Integer.toString(taxonomyVersion),
         nodeCode,
         role);

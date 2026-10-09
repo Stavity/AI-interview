@@ -7,6 +7,8 @@ import interview.guide.common.evaluation.UnifiedEvaluationService;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.interview.skill.InterviewSkillService;
+import interview.guide.modules.learning.model.VoiceQuestionEvidenceSource;
+import interview.guide.modules.learning.service.LearningEvidenceIngestionService;
 import interview.guide.modules.voiceinterview.dto.VoiceEvaluationDetailDTO;
 import interview.guide.modules.voiceinterview.dto.VoiceEvaluationDetailDTO.AnswerDetail;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewEvaluationEntity;
@@ -26,6 +28,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -44,20 +47,34 @@ public class VoiceInterviewEvaluationService {
     private final VoiceInterviewSessionRepository sessionRepository;
     private final ObjectMapper objectMapper;
     private final InterviewSkillService skillService;
+    private final LearningEvidenceIngestionService learningEvidenceIngestionService;
 
     /**
      * 生成语音面试评估（由异步消费者调用）
      * LLM 调用在事务外执行，仅 DB 写入在事务内
      */
-    public record EvaluationInput(List<QaRecord> questions, String provider, String referenceContext,
-                                  String role, java.time.LocalDateTime startTime) {}
+    public record EvaluationInput(
+        List<QaRecord> questions,
+        String provider,
+        String referenceContext,
+        String role,
+        java.time.LocalDateTime startTime,
+        List<VoiceQuestionEvidenceSource> evidenceSources
+    ) {
+        public EvaluationInput {
+            questions = questions == null ? List.of() : List.copyOf(questions);
+            evidenceSources = evidenceSources == null ? List.of() : List.copyOf(evidenceSources);
+        }
+    }
 
     public EvaluationInput snapshot(Long sessionId) {
         var session = getSession(sessionId);
         var messages = messageRepository.findBySessionIdAndMessageTypeNotOrderBySequenceNumAsc(
             sessionId, VoiceInterviewMessageEntity.MESSAGE_TYPE_SUMMARY);
-        return new EvaluationInput(buildQaRecords(messages), session.getLlmProvider(),
-            skillService.buildEvaluationReferenceSectionSafe(session.getSkillId()), session.getRoleType(), session.getStartTime());
+        QuestionSnapshot snapshot = buildQuestionSnapshot(messages);
+        return new EvaluationInput(snapshot.questions(), session.getLlmProvider(),
+            skillService.buildEvaluationReferenceSectionSafe(session.getSkillId()),
+            session.getRoleType(), session.getStartTime(), snapshot.evidenceSources());
     }
 
     public void generateEvaluation(Long sessionId) {
@@ -66,6 +83,16 @@ public class VoiceInterviewEvaluationService {
 
     public void generateEvaluation(Long sessionId, EvaluationInput input,
                                    java.util.function.Consumer<Runnable> complete) {
+        generateEvaluation(sessionId, input, null, 0L, complete);
+    }
+
+    public void generateEvaluation(
+        Long sessionId,
+        EvaluationInput input,
+        UUID taskId,
+        long evaluationVersion,
+        java.util.function.Consumer<Runnable> complete
+    ) {
         var session = VoiceInterviewSessionEntity.builder().id(sessionId)
             .roleType(input.role()).startTime(input.startTime()).build();
         if (input.questions().isEmpty()) {
@@ -74,7 +101,8 @@ public class VoiceInterviewEvaluationService {
         }
         var client = llmProviderRegistry.getChatClientOrDefault(input.provider());
         var report = unifiedEvaluationService.evaluate(client, sessionId.toString(), input.questions(), null, input.referenceContext());
-        complete.accept(() -> saveEvaluationTransactional(sessionId, session, report));
+        complete.accept(() -> saveEvaluationTransactional(
+            sessionId, session, report, input.evidenceSources(), taskId, evaluationVersion));
     }
 
     public VoiceEvaluationDetailDTO getEvaluation(Long sessionId) {
@@ -85,8 +113,9 @@ public class VoiceInterviewEvaluationService {
         return buildDetailDTO(evaluation);
     }
 
-    private List<QaRecord> buildQaRecords(List<VoiceInterviewMessageEntity> messages) {
+    private QuestionSnapshot buildQuestionSnapshot(List<VoiceInterviewMessageEntity> messages) {
         List<QaRecord> records = new ArrayList<>();
+        List<VoiceQuestionEvidenceSource> evidenceSources = new ArrayList<>();
         int index = 0;
         PendingQuestion pendingQuestion = null;
 
@@ -101,10 +130,11 @@ public class VoiceInterviewEvaluationService {
                     pendingQuestion.category(),
                     userText
                 ));
+                evidenceSources.add(toEvidenceSource(pendingQuestion.message(), index));
                 index++;
                 pendingQuestion = null;
                 if (aiText != null) {
-                    pendingQuestion = new PendingQuestion(aiText, inferCategory(aiText));
+                    pendingQuestion = new PendingQuestion(msg, aiText, inferCategory(aiText));
                 }
                 continue;
             }
@@ -116,17 +146,21 @@ public class VoiceInterviewEvaluationService {
                     pendingQuestion.category(),
                     null
                 ));
+                evidenceSources.add(toEvidenceSource(pendingQuestion.message(), index));
                 index++;
                 pendingQuestion = null;
             }
 
             if (aiText != null && userText != null) {
                 records.add(new QaRecord(index, aiText, inferCategory(aiText), userText));
+                evidenceSources.add(toEvidenceSource(msg, index));
                 index++;
             } else if (aiText != null) {
-                pendingQuestion = new PendingQuestion(aiText, inferCategory(aiText));
+                pendingQuestion = new PendingQuestion(msg, aiText, inferCategory(aiText));
             } else if (userText != null) {
                 records.add(new QaRecord(index, "", "综合", userText));
+                evidenceSources.add(new VoiceQuestionEvidenceSource(
+                    null, index, null, null, List.of(), null));
                 index++;
             }
         }
@@ -138,12 +172,41 @@ public class VoiceInterviewEvaluationService {
                 pendingQuestion.category(),
                 null
             ));
+            evidenceSources.add(toEvidenceSource(pendingQuestion.message(), index));
         }
 
-        return records;
+        return new QuestionSnapshot(records, evidenceSources);
     }
 
-    private record PendingQuestion(String question, String category) {}
+    private VoiceQuestionEvidenceSource toEvidenceSource(
+        VoiceInterviewMessageEntity message,
+        int questionIndex
+    ) {
+        List<String> secondary = List.of();
+        String secondaryJson = message.getSecondaryKnowledgeCodesJson();
+        if (secondaryJson != null && !secondaryJson.isBlank()) {
+            try {
+                secondary = objectMapper.readValue(
+                    secondaryJson, new TypeReference<List<String>>() {});
+            } catch (Exception e) {
+                log.warn("语音题目次知识点快照无法解析，跳过学习证据: messageId={}", message.getId());
+            }
+        }
+        return new VoiceQuestionEvidenceSource(
+            message.getId(), questionIndex, message.getTaxonomyVersion(),
+            message.getPrimaryKnowledgeCode(), secondary, message.getTaggingStatus());
+    }
+
+    private record QuestionSnapshot(
+        List<QaRecord> questions,
+        List<VoiceQuestionEvidenceSource> evidenceSources
+    ) {}
+
+    private record PendingQuestion(
+        VoiceInterviewMessageEntity message,
+        String question,
+        String category
+    ) {}
 
     private String inferCategory(String aiText) {
         if (aiText == null) return "综合";
@@ -156,6 +219,18 @@ public class VoiceInterviewEvaluationService {
     @Transactional
     public void saveEvaluationTransactional(Long sessionId, VoiceInterviewSessionEntity session,
                                  EvaluationReport report) {
+        saveEvaluationTransactional(sessionId, session, report, List.of(), null, 0L);
+    }
+
+    @Transactional
+    public void saveEvaluationTransactional(
+        Long sessionId,
+        VoiceInterviewSessionEntity session,
+        EvaluationReport report,
+        List<VoiceQuestionEvidenceSource> evidenceSources,
+        UUID taskId,
+        long evaluationVersion
+    ) {
         try {
             List<EvaluationReport.QuestionEvaluation> questionItems = report.questionDetails();
             List<EvaluationReport.ReferenceAnswer> refAnswerItems = report.referenceAnswers();
@@ -176,7 +251,10 @@ public class VoiceInterviewEvaluationService {
                 entity.setId(existing.getId()); entity.setCreatedAt(existing.getCreatedAt());
             });
             evaluationRepository.save(entity);
-            log.info("评估结果已保存: sessionId={}, score={}", sessionId, entity.getOverallScore());
+            int insertedEvidence = learningEvidenceIngestionService.persistVoiceInterviewEvidence(
+                sessionId.toString(), evidenceSources, report, taskId, evaluationVersion);
+            log.info("评估结果已保存: sessionId={}, score={}, learningEvidence={}",
+                sessionId, entity.getOverallScore(), insertedEvidence);
         } catch (Exception e) {
             log.error("保存评估结果失败: sessionId={}", sessionId, e);
             throw new BusinessException(ErrorCode.VOICE_EVALUATION_FAILED,

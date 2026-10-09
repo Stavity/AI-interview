@@ -14,7 +14,9 @@ public class VoiceEvaluateTaskHandler implements AsyncTaskHandler {
     public boolean exists(String id) { return repository.existsById(Long.valueOf(id)); }
     public void execute(TaskExecutionContext context) {
         var input = mapper.readValue(context.required("snapshot"), VoiceInterviewEvaluationService.EvaluationInput.class);
-        evaluation.generateEvaluation(Long.valueOf(context.businessId()), input, context::complete);
+        evaluation.generateEvaluation(
+            Long.valueOf(context.businessId()), input, context.taskId(),
+            context.executionVersion(), context::complete);
     }
     public void updateStatus(String id, AsyncTaskState state, String error) {
         repository.findById(Long.valueOf(id)).ifPresent(row -> {

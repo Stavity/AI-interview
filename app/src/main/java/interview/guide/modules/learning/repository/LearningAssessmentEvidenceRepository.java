@@ -41,4 +41,31 @@ public interface LearningAssessmentEvidenceRepository
       @Param("assessedAt") LocalDateTime assessedAt,
       @Param("fingerprint") String fingerprint
   );
+
+  @Modifying
+  @Query(value = """
+      INSERT INTO learning_assessment_evidence (
+        owner_user_id, source_type, source_session_id, source_voice_message_id, source_task_id,
+        evaluation_version, question_index, taxonomy_version, node_code, tag_role,
+        score, verified, assessed_at, evaluation_fingerprint
+      ) VALUES (
+        :ownerUserId, 'VOICE_INTERVIEW', :sessionId, :messageId, :taskId,
+        :evaluationVersion, :questionIndex, :taxonomyVersion, :nodeCode, :tagRole,
+        :score, true, :assessedAt, :fingerprint
+      ) ON CONFLICT ON CONSTRAINT uk_learning_evidence_idempotency DO NOTHING
+      """, nativeQuery = true)
+  int insertVoiceInterviewEvidence(
+      @Param("ownerUserId") long ownerUserId,
+      @Param("sessionId") String sessionId,
+      @Param("messageId") long messageId,
+      @Param("taskId") UUID taskId,
+      @Param("evaluationVersion") long evaluationVersion,
+      @Param("questionIndex") int questionIndex,
+      @Param("taxonomyVersion") int taxonomyVersion,
+      @Param("nodeCode") String nodeCode,
+      @Param("tagRole") String tagRole,
+      @Param("score") int score,
+      @Param("assessedAt") LocalDateTime assessedAt,
+      @Param("fingerprint") String fingerprint
+  );
 }

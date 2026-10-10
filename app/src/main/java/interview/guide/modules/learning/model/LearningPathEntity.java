@@ -46,6 +46,9 @@ public class LearningPathEntity {
   @Column(nullable = false, length = 1000)
   private String summary;
 
+  @Column(name = "composition_source", nullable = false, length = 32, updatable = false)
+  private String compositionSource;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 20)
   private Status status;
@@ -58,7 +61,7 @@ public class LearningPathEntity {
 
   public static LearningPathEntity active(
       long ownerUserId, int taxonomyVersion, int routeRuleVersion, String goal,
-      String triggerReason, String summary
+      String triggerReason, String summary, String compositionSource
   ) {
     LearningPathEntity entity = new LearningPathEntity();
     entity.ownerUserId = ownerUserId;
@@ -67,6 +70,7 @@ public class LearningPathEntity {
     entity.goal = goal;
     entity.triggerReason = triggerReason;
     entity.summary = summary;
+    entity.compositionSource = compositionSource;
     entity.status = Status.ACTIVE;
     return entity;
   }

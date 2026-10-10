@@ -164,6 +164,8 @@ app:
     max-attempts: 4
   learning:
     task-completion-delta: ${APP_LEARNING_TASK_COMPLETION_DELTA:5}
+    # AI only improves wording for a deterministic path. Keep disabled until a provider is approved.
+    path-ai-enabled: ${APP_LEARNING_PATH_AI_ENABLED:false}
   ai:
     default-provider: dashscope
     default-embedding-provider: dashscope

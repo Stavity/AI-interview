@@ -6,9 +6,13 @@ import interview.guide.common.tenant.TenantContext;
 import interview.guide.modules.learning.model.LearningKnowledgeProgressEntity;
 import interview.guide.modules.learning.model.LearningPathEntity;
 import interview.guide.modules.learning.model.LearningPathItemEntity;
+import interview.guide.modules.learning.model.LearningPathItemResourceEntity;
+import interview.guide.modules.learning.model.LearningSkillSourceEntity;
 import interview.guide.modules.learning.repository.LearningKnowledgeProgressRepository;
 import interview.guide.modules.learning.repository.LearningPathItemRepository;
+import interview.guide.modules.learning.repository.LearningPathItemResourceRepository;
 import interview.guide.modules.learning.repository.LearningPathRepository;
+import interview.guide.modules.learning.repository.LearningSkillSourceRepository;
 import interview.guide.modules.questiontag.model.QuestionKnowledgeNodeEntity;
 import interview.guide.modules.questiontag.model.QuestionKnowledgeNodeRelationEntity;
 import interview.guide.modules.questiontag.model.QuestionKnowledgeNodeRelationEntity.RelationType;
@@ -33,11 +37,15 @@ public class PersonalizedLearningPathService {
 
   private final LearningPathRepository pathRepository;
   private final LearningPathItemRepository itemRepository;
+  private final LearningPathItemResourceRepository itemResourceRepository;
+  private final LearningSkillSourceRepository skillSourceRepository;
   private final LearningKnowledgeProgressRepository progressRepository;
   private final QuestionKnowledgeNodeRepository nodeRepository;
   private final QuestionKnowledgeNodeRelationRepository relationRepository;
   private final QuestionTagQueryService taxonomyVersionResolver;
   private final LearningRoutePlanner routePlanner;
+  private final LearningPathResourceMatcher resourceMatcher;
+  private final LearningPathNarrativeComposer narrativeComposer;
   private final LearningProperties properties;
 
   @Transactional(readOnly = true)
@@ -117,9 +125,12 @@ public class PersonalizedLearningPathService {
       pathRepository.save(previous);
       pathRepository.flush();
     }
-    String summary = summaryFor(planned, coldStart);
+    String ruleSummary = summaryFor(planned, coldStart);
+    LearningPathNarrativeComposer.Composition composition = narrativeComposer.compose(
+        goal, planned, nodesByCode, ruleSummary);
     LearningPathEntity path = pathRepository.save(LearningPathEntity.active(
-        ownerUserId, taxonomyVersion, properties.getRouteRuleVersion(), goal, triggerReason, summary));
+        ownerUserId, taxonomyVersion, properties.getRouteRuleVersion(), goal, triggerReason,
+        composition.summary(), composition.source()));
 
     Map<String, LearningKnowledgeProgressEntity> progressByNode = new HashMap<>();
     progressEntities.forEach(value -> progressByNode.put(value.getNodeCode(), value));
@@ -140,7 +151,21 @@ public class PersonalizedLearningPathService {
               ? "你还没有足够的面试证据，先从该目录的基础知识点开始建立学习基线。"
               : step.reason()));
     }
-    itemRepository.saveAll(items);
+    List<LearningPathItemEntity> savedItems = itemRepository.saveAll(items);
+    List<LearningSkillSourceEntity> activeSources = skillSourceRepository
+        .findByStatusOrderByIdAsc(LearningSkillSourceEntity.Status.ACTIVE);
+    List<LearningPathItemResourceEntity> resources = new java.util.ArrayList<>();
+    for (LearningPathItemEntity item : savedItems) {
+      QuestionKnowledgeNodeEntity node = nodesByCode.get(item.getNodeCode());
+      if (node == null) {
+        continue;
+      }
+      for (LearningPathResourceMatcher.Match match : resourceMatcher.match(node, activeSources)) {
+        resources.add(LearningPathItemResourceEntity.matched(ownerUserId, item.getId(), match.source(),
+            match.score(), match.reason()));
+      }
+    }
+    itemResourceRepository.saveAll(resources);
     return snapshot(path, ownerUserId);
   }
 
@@ -165,9 +190,18 @@ public class PersonalizedLearningPathService {
   }
 
   private PathSnapshot snapshot(LearningPathEntity path, long ownerUserId) {
-    List<PathItemSnapshot> items = itemRepository
-        .findByPathIdAndOwnerUserIdOrderBySequenceNoAsc(path.getId(), ownerUserId).stream()
-        .map(PathItemSnapshot::from).toList();
+    List<LearningPathItemEntity> pathItems = itemRepository
+        .findByPathIdAndOwnerUserIdOrderBySequenceNoAsc(path.getId(), ownerUserId);
+    Map<Long, List<PathResourceSnapshot>> resourcesByItem = new HashMap<>();
+    if (!pathItems.isEmpty()) {
+      itemResourceRepository.findByPathItemIdInAndOwnerUserIdOrderByMatchScoreDescIdAsc(
+          pathItems.stream().map(LearningPathItemEntity::getId).toList(), ownerUserId)
+          .forEach(resource -> resourcesByItem.computeIfAbsent(resource.getPathItemId(), ignored ->
+              new java.util.ArrayList<>()).add(PathResourceSnapshot.from(resource)));
+    }
+    List<PathItemSnapshot> items = pathItems.stream()
+        .map(item -> PathItemSnapshot.from(item, resourcesByItem.getOrDefault(item.getId(), List.of())))
+        .toList();
     return PathSnapshot.from(path, items);
   }
 
@@ -205,6 +239,7 @@ public class PersonalizedLearningPathService {
       int routeRuleVersion,
       String goal,
       String triggerReason,
+      String compositionSource,
       String summary,
       String status,
       java.time.LocalDateTime createdAt,
@@ -212,14 +247,14 @@ public class PersonalizedLearningPathService {
   ) {
     static PathSnapshot empty(int taxonomyVersion, int routeRuleVersion) {
       return new PathSnapshot(null, taxonomyVersion, routeRuleVersion, null, null,
-          "尚未生成学习路线。点击“生成路线”后，系统会根据当前知识点掌握度创建路线。",
+          "RULE", "尚未生成学习路线。点击“生成路线”后，系统会根据当前知识点掌握度创建路线。",
           "EMPTY", null, List.of());
     }
 
     static PathSnapshot from(LearningPathEntity path, List<PathItemSnapshot> items) {
       return new PathSnapshot(path.getId(), path.getTaxonomyVersion(), path.getRouteRuleVersion(),
-          path.getGoal(), path.getTriggerReason(), path.getSummary(), path.getStatus().name(),
-          path.getCreatedAt(), items);
+          path.getGoal(), path.getTriggerReason(), path.getCompositionSource(), path.getSummary(),
+          path.getStatus().name(), path.getCreatedAt(), items);
     }
   }
 
@@ -234,14 +269,24 @@ public class PersonalizedLearningPathService {
       int estimatedMinutes,
       boolean prerequisite,
       String recommendationReason,
+      List<PathResourceSnapshot> resources,
       String status,
       java.time.LocalDateTime completedAt
   ) {
-    static PathItemSnapshot from(LearningPathItemEntity item) {
+    static PathItemSnapshot from(LearningPathItemEntity item, List<PathResourceSnapshot> resources) {
       return new PathItemSnapshot(item.getId(), item.getSequenceNo(), item.getNodeCode(),
           item.getNodeName(), item.getMasteryScore(), item.getEvidenceCount(), item.getDifficulty(),
           item.getEstimatedMinutes(), item.isPrerequisite(), item.getRecommendationReason(),
-          item.getStatus().name(), item.getCompletedAt());
+          resources, item.getStatus().name(), item.getCompletedAt());
+    }
+  }
+
+  public record PathResourceSnapshot(
+      long sourceId, String displayName, String categoryKey, int matchScore, String matchReason
+  ) {
+    static PathResourceSnapshot from(LearningPathItemResourceEntity resource) {
+      return new PathResourceSnapshot(resource.getSkillSourceId(), resource.getSourceDisplayName(),
+          resource.getCategoryKey(), resource.getMatchScore(), resource.getMatchReason());
     }
   }
 }

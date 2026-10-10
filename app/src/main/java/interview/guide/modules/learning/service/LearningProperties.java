@@ -17,4 +17,5 @@ public class LearningProperties {
   private int incorrectScore = 60;
   private int aggregationRuleVersion = 1;
   private int routeRuleVersion = 1;
+  private boolean pathAiEnabled = false;
 }

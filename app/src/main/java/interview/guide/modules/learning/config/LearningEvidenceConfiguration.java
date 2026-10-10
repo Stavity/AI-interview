@@ -15,7 +15,9 @@ public class LearningEvidenceConfiguration {
         properties.getEvidenceSessionWindow(),
         properties.getEvidenceHalfLifeDays(),
         properties.getMasteredScore(),
-        properties.getMasteredMinimumSessions()));
+        properties.getMasteredMinimumSessions(),
+        properties.getCorrectScore(),
+        properties.getIncorrectScore()));
   }
 
   @Bean

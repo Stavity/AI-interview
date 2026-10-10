@@ -26,7 +26,9 @@ public class LearningEvidenceAggregator {
     this.policy = Objects.requireNonNull(policy, "policy");
     if (policy.recentSessionLimit() < 1 || policy.halfLifeDays() <= 0
         || policy.masteredScore() < 0 || policy.masteredScore() > 100
-        || policy.masteredMinimumSessions() < 1) {
+        || policy.masteredMinimumSessions() < 1
+        || policy.correctScore() < 0 || policy.correctScore() > 100
+        || policy.incorrectScore() < 0 || policy.incorrectScore() > policy.correctScore()) {
       throw new IllegalArgumentException("学习证据聚合配置超出有效范围");
     }
   }
@@ -145,7 +147,7 @@ public class LearningEvidenceAggregator {
       KnowledgeNode node, List<SessionObservation> sessions, LocalDateTime now
   ) {
     if (sessions.isEmpty()) {
-      return new NodeProgress(node.code(), node.parentCode(), 0, 0, 0,
+      return new NodeProgress(node.code(), node.parentCode(), 0, 0, 0, 0, 0, 0,
           ProgressStatus.NOT_STARTED, null);
     }
 
@@ -168,11 +170,37 @@ public class LearningEvidenceAggregator {
 
     int masteryScore = (int) Math.round(weightedScore / totalWeight);
     int sessionCount = sessions.size();
+    int consecutiveCorrect = consecutiveCorrect(sessions);
+    int consecutiveIncorrect = consecutiveIncorrect(sessions);
+    int confidenceScore = Math.min(100,
+        (int) Math.round(100.0 * sessionCount / policy.masteredMinimumSessions()));
     ProgressStatus status = masteryScore >= policy.masteredScore()
         && sessionCount >= policy.masteredMinimumSessions()
         ? ProgressStatus.MASTERED : ProgressStatus.LEARNING;
     return new NodeProgress(node.code(), node.parentCode(), masteryScore, evidenceCount, sessionCount,
-        status, lastPracticedAt);
+        consecutiveCorrect, consecutiveIncorrect, confidenceScore, status, lastPracticedAt);
+  }
+
+  private int consecutiveCorrect(List<SessionObservation> sessions) {
+    int count = 0;
+    for (SessionObservation session : sessions) {
+      if (session.score() < policy.correctScore()) {
+        break;
+      }
+      count++;
+    }
+    return count;
+  }
+
+  private int consecutiveIncorrect(List<SessionObservation> sessions) {
+    int count = 0;
+    for (SessionObservation session : sessions) {
+      if (session.score() >= policy.incorrectScore()) {
+        break;
+      }
+      count++;
+    }
+    return count;
   }
 
   public enum TagRole {
@@ -194,10 +222,12 @@ public class LearningEvidenceAggregator {
       int recentSessionLimit,
       double halfLifeDays,
       int masteredScore,
-      int masteredMinimumSessions
+      int masteredMinimumSessions,
+      int correctScore,
+      int incorrectScore
   ) {
     public static Policy defaults() {
-      return new Policy(20, 90.0, 85, 3);
+      return new Policy(20, 90.0, 85, 3, 80, 60);
     }
   }
 
@@ -232,6 +262,9 @@ public class LearningEvidenceAggregator {
       int masteryScore,
       int evidenceCount,
       int distinctSessionCount,
+      int consecutiveCorrectCount,
+      int consecutiveIncorrectCount,
+      int confidenceScore,
       ProgressStatus status,
       LocalDateTime lastPracticedAt
   ) {}

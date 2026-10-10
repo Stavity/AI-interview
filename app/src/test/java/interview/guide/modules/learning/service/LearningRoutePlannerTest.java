@@ -65,7 +65,7 @@ class LearningRoutePlannerTest {
   }
 
   private static NodeProgress progress(String code, int score, int sessions, ProgressStatus status) {
-    return new NodeProgress(code, null, score, sessions, sessions, status,
+    return new NodeProgress(code, null, score, sessions, sessions, 0, 0, 100, status,
         LocalDateTime.of(2026, 9, 27, 12, 0));
   }
 }

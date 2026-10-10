@@ -42,6 +42,7 @@ class LearningEvidenceAggregatorTest {
       assertThat(progress.masteryScore()).isEqualTo(86);
       assertThat(progress.evidenceCount()).isEqualTo(2);
       assertThat(progress.distinctSessionCount()).isEqualTo(2);
+      assertThat(progress.confidenceScore()).isEqualTo(67);
       assertThat(progress.status()).isEqualTo(ProgressStatus.LEARNING);
     });
   }
@@ -91,7 +92,26 @@ class LearningEvidenceAggregatorTest {
     NodeProgress result = aggregator.aggregate(7, 3, List.of(node), evidence, now).getFirst();
 
     assertThat(result.masteryScore()).isEqualTo(100);
+    assertThat(result.consecutiveCorrectCount()).isEqualTo(3);
+    assertThat(result.consecutiveIncorrectCount()).isZero();
+    assertThat(result.confidenceScore()).isEqualTo(100);
     assertThat(result.status()).isEqualTo(ProgressStatus.MASTERED);
+  }
+
+  @Test
+  @DisplayName("连续正确或错误只从最近会话起计算，中间分数会中断连续次数")
+  void shouldCalculateRecentCorrectAndIncorrectStreaks() {
+    KnowledgeNode node = node("JAVA.JVM", null, true, 0);
+    List<AssessmentEvidence> evidence = List.of(
+        evidence(7, 3, "s1", 0, node.code(), TagRole.PRIMARY, 90, true, now, "1"),
+        evidence(7, 3, "s2", 0, node.code(), TagRole.PRIMARY, 85, true, now.minusDays(1), "2"),
+        evidence(7, 3, "s3", 0, node.code(), TagRole.PRIMARY, 70, true, now.minusDays(2), "3"),
+        evidence(7, 3, "s4", 0, node.code(), TagRole.PRIMARY, 20, true, now.minusDays(3), "4"));
+
+    NodeProgress result = aggregator.aggregate(7, 3, List.of(node), evidence, now).getFirst();
+
+    assertThat(result.consecutiveCorrectCount()).isEqualTo(2);
+    assertThat(result.consecutiveIncorrectCount()).isZero();
   }
 
   private static KnowledgeNode node(String code, String parent, boolean assignable, int order) {

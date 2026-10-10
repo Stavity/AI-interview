@@ -6,7 +6,9 @@ export interface LearningTask { id: number; planId: number; skillSourceId?: numb
 export interface LearningReminder { id: number; taskId: number; remindAt: string; channel: string; status: string; }
 export interface LearningProgress { id: number; sourceId: number; masteryScore: number; status: string; lastPracticedAt?: string; }
 export interface LearningRecommendation { sourceId: number; skillId: string; categoryKey: string; displayName: string; masteryScore: number; reason: string; }
-export interface InterviewRecommendationPreview { reportSummary: string; completedRounds: number; totalRounds: number; recommendations: LearningRecommendation[]; }
+export interface KnowledgeProgressNode { code: string; name: string; parentCode?: string; assignable: boolean; sortOrder: number; masteryScore: number; evidenceCount: number; distinctSessionCount: number; consecutiveCorrectCount: number; consecutiveIncorrectCount: number; confidenceScore: number; status: 'NOT_STARTED' | 'LEARNING' | 'MASTERED'; lastPracticedAt?: string; }
+export interface KnowledgeProgressSnapshot { taxonomyVersion: number; aggregationRuleVersion: number; aggregatedAt?: string; nodes: KnowledgeProgressNode[]; }
+export interface LearningEvidence { id: number; sourceType: 'TEXT_INTERVIEW' | 'VOICE_INTERVIEW'; sourceSessionId: string; sourceAnswerId?: number; sourceVoiceMessageId?: number; evaluationVersion: number; questionIndex: number; taxonomyVersion: number; nodeCode: string; tagRole: 'PRIMARY' | 'SECONDARY'; score: number; assessedAt: string; }
 
 export const learningApi = {
   listSources: () => request.get<LearningSource[]>('/api/learning/sources'),
@@ -21,5 +23,7 @@ export const learningApi = {
   listProgress: () => request.get<LearningProgress[]>('/api/learning/progress'),
   adjustProgress: (sourceId: number, delta: number) => request.post<LearningProgress>(`/api/learning/sources/${sourceId}/progress`, { delta }),
   pathRecommendation: () => request.get<LearningRecommendation[]>('/api/learning/path-recommendation'),
-  recommendationsFromInterview: (sessionId: string) => request.post<InterviewRecommendationPreview>(`/api/learning/recommendations/from-interview/${sessionId}`),
+  knowledgeProgress: (taxonomyVersion?: number) => request.get<KnowledgeProgressSnapshot>('/api/learning/knowledge-progress', { params: { taxonomyVersion } }),
+  rebuildKnowledgeProgress: (taxonomyVersion?: number) => request.post<KnowledgeProgressSnapshot>('/api/learning/knowledge-progress/rebuild', undefined, { params: { taxonomyVersion } }),
+  listEvidence: (params?: { taxonomyVersion?: number; nodeCode?: string; limit?: number }) => request.get<LearningEvidence[]>('/api/learning/evidence', { params }),
 };

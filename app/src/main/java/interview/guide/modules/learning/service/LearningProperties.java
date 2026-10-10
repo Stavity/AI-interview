@@ -13,4 +13,7 @@ public class LearningProperties {
   private double evidenceHalfLifeDays = 90.0;
   private int masteredScore = 85;
   private int masteredMinimumSessions = 3;
+  private int correctScore = 80;
+  private int incorrectScore = 60;
+  private int aggregationRuleVersion = 1;
 }

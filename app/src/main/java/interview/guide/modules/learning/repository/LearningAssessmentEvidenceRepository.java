@@ -9,11 +9,21 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 
 public interface LearningAssessmentEvidenceRepository
     extends JpaRepository<LearningAssessmentEvidenceEntity, Long> {
 
-  List<LearningAssessmentEvidenceEntity> findByTaxonomyVersionOrderByAssessedAtDesc(int taxonomyVersion);
+  List<LearningAssessmentEvidenceEntity> findByOwnerUserIdAndTaxonomyVersionOrderByAssessedAtDescIdDesc(
+      long ownerUserId, int taxonomyVersion);
+
+  List<LearningAssessmentEvidenceEntity>
+      findByOwnerUserIdAndTaxonomyVersionOrderByAssessedAtDescIdDesc(
+          long ownerUserId, int taxonomyVersion, Pageable pageable);
+
+  List<LearningAssessmentEvidenceEntity>
+      findByOwnerUserIdAndTaxonomyVersionAndNodeCodeOrderByAssessedAtDescIdDesc(
+          long ownerUserId, int taxonomyVersion, String nodeCode, Pageable pageable);
 
   @Modifying
   @Query(value = """

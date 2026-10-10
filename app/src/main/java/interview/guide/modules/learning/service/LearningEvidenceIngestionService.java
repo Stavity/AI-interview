@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LearningEvidenceIngestionService {
   private final LearningAssessmentEvidenceRepository repository;
+  private final LearningKnowledgeProgressService progressService;
 
   public int persistTextInterviewEvidence(
       String sessionId,
@@ -60,6 +61,13 @@ public class LearningEvidenceIngestionService {
             evaluation.score(), assessedAt, fingerprint);
       }
     }
+    if (inserted > 0) {
+      questions.stream()
+          .map(InterviewQuestionDTO::taxonomyVersion)
+          .filter(java.util.Objects::nonNull)
+          .distinct()
+          .forEach(version -> progressService.rebuild(ownerUserId, version));
+    }
     return inserted;
   }
 
@@ -92,6 +100,13 @@ public class LearningEvidenceIngestionService {
             evaluation.questionIndex(), source.taxonomyVersion(), node.code(), node.role(),
             evaluation.score(), assessedAt, fingerprint);
       }
+    }
+    if (inserted > 0) {
+      sources.stream()
+          .filter(source -> source.taxonomyVersion() != null)
+          .mapToInt(VoiceQuestionEvidenceSource::taxonomyVersion)
+          .distinct()
+          .forEach(version -> progressService.rebuild(ownerUserId, version));
     }
     return inserted;
   }

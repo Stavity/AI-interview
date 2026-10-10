@@ -9,6 +9,8 @@ export interface LearningRecommendation { sourceId: number; skillId: string; cat
 export interface KnowledgeProgressNode { code: string; name: string; parentCode?: string; assignable: boolean; sortOrder: number; masteryScore: number; evidenceCount: number; distinctSessionCount: number; consecutiveCorrectCount: number; consecutiveIncorrectCount: number; confidenceScore: number; status: 'NOT_STARTED' | 'LEARNING' | 'MASTERED'; lastPracticedAt?: string; }
 export interface KnowledgeProgressSnapshot { taxonomyVersion: number; aggregationRuleVersion: number; aggregatedAt?: string; nodes: KnowledgeProgressNode[]; }
 export interface LearningEvidence { id: number; sourceType: 'TEXT_INTERVIEW' | 'VOICE_INTERVIEW'; sourceSessionId: string; sourceAnswerId?: number; sourceVoiceMessageId?: number; evaluationVersion: number; questionIndex: number; taxonomyVersion: number; nodeCode: string; tagRole: 'PRIMARY' | 'SECONDARY'; score: number; assessedAt: string; }
+export interface PersonalizedLearningPathItem { id: number; sequenceNo: number; nodeCode: string; nodeName: string; masteryScore: number; evidenceCount: number; difficulty: 'FOUNDATION' | 'REINFORCEMENT' | 'PRACTICE'; estimatedMinutes: number; prerequisite: boolean; recommendationReason: string; status: 'PENDING' | 'COMPLETED' | 'SKIPPED'; completedAt?: string; }
+export interface PersonalizedLearningPath { id?: number; taxonomyVersion: number; routeRuleVersion: number; goal?: string; triggerReason?: string; summary: string; status: 'EMPTY' | 'ACTIVE'; createdAt?: string; items: PersonalizedLearningPathItem[]; }
 
 export const learningApi = {
   listSources: () => request.get<LearningSource[]>('/api/learning/sources'),
@@ -26,4 +28,7 @@ export const learningApi = {
   knowledgeProgress: (taxonomyVersion?: number) => request.get<KnowledgeProgressSnapshot>('/api/learning/knowledge-progress', { params: { taxonomyVersion } }),
   rebuildKnowledgeProgress: (taxonomyVersion?: number) => request.post<KnowledgeProgressSnapshot>('/api/learning/knowledge-progress/rebuild', undefined, { params: { taxonomyVersion } }),
   listEvidence: (params?: { taxonomyVersion?: number; nodeCode?: string; limit?: number }) => request.get<LearningEvidence[]>('/api/learning/evidence', { params }),
+  personalizedPath: () => request.get<PersonalizedLearningPath>('/api/learning/personalized-path'),
+  regeneratePersonalizedPath: (goal?: string) => request.post<PersonalizedLearningPath>('/api/learning/personalized-path/regenerate', { goal }),
+  completePersonalizedPathItem: (itemId: number) => request.post<PersonalizedLearningPath>(`/api/learning/personalized-path/items/${itemId}/complete`),
 };

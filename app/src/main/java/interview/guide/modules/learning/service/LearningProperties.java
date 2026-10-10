@@ -16,4 +16,5 @@ public class LearningProperties {
   private int correctScore = 80;
   private int incorrectScore = 60;
   private int aggregationRuleVersion = 1;
+  private int routeRuleVersion = 1;
 }

@@ -31,10 +31,12 @@ import static org.mockito.Mockito.when;
 class LearningEvidenceIngestionServiceTest {
   @Mock private LearningAssessmentEvidenceRepository repository;
   @Mock private LearningKnowledgeProgressService progressService;
+  @Mock private PersonalizedLearningPathService personalizedLearningPathService;
 
   @Test
   void persistsVerifiedPrimaryAndSecondaryTagsWithTrustedOwner() {
-    var service = new LearningEvidenceIngestionService(repository, progressService);
+    var service = new LearningEvidenceIngestionService(
+        repository, progressService, personalizedLearningPathService);
     var answer = answer(101L, 0);
     var report = report(0, 76, "solid");
     UUID taskId = UUID.randomUUID();
@@ -54,11 +56,13 @@ class LearningEvidenceIngestionServiceTest {
         eq(7L), eq("session-1"), eq(101L), eq(taskId), eq(3L), eq(0), eq(11),
         eq("ROOT.JAVA.GENERICS"), eq("SECONDARY"), eq(76), any(LocalDateTime.class), anyString());
     verify(progressService).rebuild(7L, 11);
+    verify(personalizedLearningPathService).refreshAfterKnowledgeProgressChanged(7L, 11);
   }
 
   @Test
   void skipsUnverifiedTagsEvenWhenEvaluationHasAScore() {
-    var service = new LearningEvidenceIngestionService(repository, progressService);
+    var service = new LearningEvidenceIngestionService(
+        repository, progressService, personalizedLearningPathService);
 
     int inserted = TenantContext.callAs(7L, () -> service.persistTextInterviewEvidence(
         "session-1", List.of(question("REVIEW_REQUIRED")), List.of(answer(101L, 0)),
@@ -69,11 +73,14 @@ class LearningEvidenceIngestionServiceTest {
         anyLong(), anyString(), anyLong(), any(), anyLong(), anyInt(), anyInt(),
         anyString(), anyString(), anyInt(), any(LocalDateTime.class), anyString());
     verify(progressService, never()).rebuild(anyLong(), anyInt());
+    verify(personalizedLearningPathService, never())
+        .refreshAfterKnowledgeProgressChanged(anyLong(), anyInt());
   }
 
   @Test
   void persistsVoiceEvidenceAgainstFrozenMessageAndTaskVersion() {
-    var service = new LearningEvidenceIngestionService(repository, progressService);
+    var service = new LearningEvidenceIngestionService(
+        repository, progressService, personalizedLearningPathService);
     UUID taskId = UUID.randomUUID();
     when(repository.insertVoiceInterviewEvidence(
         anyLong(), anyString(), anyLong(), any(), anyLong(), anyInt(), anyInt(),
@@ -96,11 +103,13 @@ class LearningEvidenceIngestionServiceTest {
         eq("ROOT.JAVA.GENERICS"), eq("SECONDARY"), eq(82),
         any(LocalDateTime.class), anyString());
     verify(progressService).rebuild(7L, 11);
+    verify(personalizedLearningPathService).refreshAfterKnowledgeProgressChanged(7L, 11);
   }
 
   @Test
   void skipsVoiceEvidenceWithoutVerifiedFrozenTags() {
-    var service = new LearningEvidenceIngestionService(repository, progressService);
+    var service = new LearningEvidenceIngestionService(
+        repository, progressService, personalizedLearningPathService);
     var source = new VoiceQuestionEvidenceSource(
         501L, 0, 11, "ROOT.JAVA.COLLECTION", List.of(), "REVIEW_REQUIRED");
 
@@ -112,6 +121,8 @@ class LearningEvidenceIngestionServiceTest {
         anyLong(), anyString(), anyLong(), any(), anyLong(), anyInt(), anyInt(),
         anyString(), anyString(), anyInt(), any(LocalDateTime.class), anyString());
     verify(progressService, never()).rebuild(anyLong(), anyInt());
+    verify(personalizedLearningPathService, never())
+        .refreshAfterKnowledgeProgressChanged(anyLong(), anyInt());
   }
 
   private static InterviewQuestionDTO question(String taggingStatus) {

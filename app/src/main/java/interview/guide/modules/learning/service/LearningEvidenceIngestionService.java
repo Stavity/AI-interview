@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 public class LearningEvidenceIngestionService {
   private final LearningAssessmentEvidenceRepository repository;
   private final LearningKnowledgeProgressService progressService;
+  private final PersonalizedLearningPathService personalizedLearningPathService;
 
   public int persistTextInterviewEvidence(
       String sessionId,
@@ -66,7 +67,10 @@ public class LearningEvidenceIngestionService {
           .map(InterviewQuestionDTO::taxonomyVersion)
           .filter(java.util.Objects::nonNull)
           .distinct()
-          .forEach(version -> progressService.rebuild(ownerUserId, version));
+          .forEach(version -> {
+            progressService.rebuild(ownerUserId, version);
+            personalizedLearningPathService.refreshAfterKnowledgeProgressChanged(ownerUserId, version);
+          });
     }
     return inserted;
   }
@@ -106,7 +110,10 @@ public class LearningEvidenceIngestionService {
           .filter(source -> source.taxonomyVersion() != null)
           .mapToInt(VoiceQuestionEvidenceSource::taxonomyVersion)
           .distinct()
-          .forEach(version -> progressService.rebuild(ownerUserId, version));
+          .forEach(version -> {
+            progressService.rebuild(ownerUserId, version);
+            personalizedLearningPathService.refreshAfterKnowledgeProgressChanged(ownerUserId, version);
+          });
     }
     return inserted;
   }

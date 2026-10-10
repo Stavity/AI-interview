@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from 'react';
-import {useLocation, useNavigate} from 'react-router-dom';
+import {useLocation} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {historyApi, InterviewDetail, ResumeDetail} from '../api/history';
 import AnalysisPanel from '../components/AnalysisPanel';
@@ -7,9 +7,6 @@ import InterviewPanel from '../components/InterviewPanel';
 import InterviewDetailPanel from '../components/InterviewDetailPanel';
 import {formatDateOnly} from '../utils/date';
 import {CheckSquare, ChevronLeft, Clock, Download, MessageSquare, Mic} from 'lucide-react';
-import {multiRoundApi} from '../api/multiRound';
-import {ROUTES} from '../constants/routes';
-import {skillApi, SkillDTO} from '../api/skill';
 
 interface ResumeDetailPageProps {
   resumeId: number;
@@ -22,7 +19,6 @@ type DetailViewType = 'list' | 'interviewDetail';
 
 export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }: ResumeDetailPageProps) {
   const location = useLocation();
-  const navigate = useNavigate();
   const [resume, setResume] = useState<ResumeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('analysis');
@@ -32,36 +28,6 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const [selectedInterview, setSelectedInterview] = useState<InterviewDetail | null>(null);
   const [loadingInterview, setLoadingInterview] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
-  const [startingMultiRound, setStartingMultiRound] = useState(false);
-  const [showMultiRoundOptions, setShowMultiRoundOptions] = useState(false);
-  const [skills, setSkills] = useState<SkillDTO[]>([]);
-  const [multiRoundSkillId, setMultiRoundSkillId] = useState('java-backend');
-  const [multiRoundDifficulty, setMultiRoundDifficulty] = useState<'junior' | 'mid' | 'senior'>('mid');
-  const [multiRoundJd, setMultiRoundJd] = useState('');
-  const [multiRoundError, setMultiRoundError] = useState('');
-
-  const startMultiRoundInterview = async () => {
-    if (startingMultiRound) return;
-    try {
-      setStartingMultiRound(true);
-      setMultiRoundError('');
-      const active = await multiRoundApi.getActiveForResume(resumeId);
-      if (active) {
-        navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(active.sessionId)}`);
-        return;
-      }
-      const created = await multiRoundApi.startForResume(resumeId, {
-        skillId: multiRoundSkillId, difficulty: multiRoundDifficulty, jdText: multiRoundJd.trim() || undefined,
-      }, `multi-round-resume:${resumeId}:${crypto.randomUUID()}`);
-      navigate(`${ROUTES.multiRound}?sessionId=${encodeURIComponent(created.sessionId)}`);
-    } catch (err) {
-      // 原实现只有 try/finally：失败时按钮闪一下回弹，用户得不到任何反馈
-      setMultiRoundError(err instanceof Error ? err.message : '多轮面试启动失败，请稍后重试');
-    } finally {
-      setStartingMultiRound(false);
-    }
-  };
-
   // 静默加载数据（用于轮询）
   const loadResumeDetailSilent = useCallback(async () => {
     try {
@@ -87,14 +53,6 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   useEffect(() => {
     loadResumeDetail();
   }, [loadResumeDetail]);
-
-  useEffect(() => {
-    if (!showMultiRoundOptions || skills.length > 0) return;
-    skillApi.listSkills().then(items => {
-      setSkills(items);
-      if (items.length > 0 && !items.some(item => item.id === multiRoundSkillId)) setMultiRoundSkillId(items[0].id);
-    }).catch(err => console.error('加载面试技能失败', err));
-  }, [showMultiRoundOptions, skills.length, multiRoundSkillId]);
 
   // 轮询：当分析状态为待处理时，每5秒刷新一次
   // 待处理判断：显式的 PENDING/PROCESSING 状态，或状态未定义且无分析结果
@@ -312,18 +270,6 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
           )}
           {detailView !== 'interviewDetail' && (
             <motion.button
-              onClick={() => setShowMultiRoundOptions(true)}
-              disabled={startingMultiRound || resume.analyzeStatus !== 'COMPLETED'}
-              className="px-5 py-2.5 border border-primary-300 bg-white dark:bg-slate-800 rounded-xl text-primary-600 dark:text-primary-300 font-medium hover:bg-primary-50 transition-all disabled:opacity-50 flex items-center gap-2"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <MessageSquare className="w-4 h-4" />
-              {startingMultiRound ? '准备中...' : '开始多轮面试'}
-            </motion.button>
-          )}
-          {detailView !== 'interviewDetail' && (
-            <motion.button
               onClick={() => onStartInterview(resumeId)}
               className="px-5 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl font-medium shadow-lg shadow-primary-500/30 hover:shadow-xl transition-all flex items-center gap-2"
               whileHover={{ scale: 1.02, y: -1 }}
@@ -408,36 +354,6 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
           </AnimatePresence>
         )}
       </div>
-      {showMultiRoundOptions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setShowMultiRoundOptions(false)}>
-          <div className="w-full max-w-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-6" onClick={event => event.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">配置多轮面试</h3>
-            <div className="mt-5 space-y-4">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">面试技能
-                <select value={multiRoundSkillId} onChange={event => setMultiRoundSkillId(event.target.value)} className="mt-1.5 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white">
-                  {skills.length === 0 && <option value="java-backend">Java 后端</option>}
-                  {skills.map(skill => <option key={skill.id} value={skill.id}>{skill.name}</option>)}
-                </select>
-              </label>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">难度
-                <select value={multiRoundDifficulty} onChange={event => setMultiRoundDifficulty(event.target.value as 'junior' | 'mid' | 'senior')} className="mt-1.5 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white">
-                  <option value="junior">初级</option><option value="mid">中级</option><option value="senior">高级</option>
-                </select>
-              </label>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">岗位 JD（可选）
-                <textarea value={multiRoundJd} onChange={event => setMultiRoundJd(event.target.value)} rows={4} className="mt-1.5 w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-slate-900 dark:text-white" />
-              </label>
-            </div>
-            {multiRoundError && (
-              <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">{multiRoundError}</p>
-            )}
-            <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => { setShowMultiRoundOptions(false); setMultiRoundError(''); }} className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">取消</button>
-              <button type="button" onClick={startMultiRoundInterview} disabled={startingMultiRound} className="px-4 py-2 rounded-md bg-primary-600 text-sm font-medium text-white disabled:opacity-50">{startingMultiRound ? '准备中...' : '开始面试'}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </motion.div>
   );
 }

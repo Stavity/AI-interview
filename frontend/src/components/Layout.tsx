@@ -104,7 +104,6 @@ export default function Layout() {
         { id: 'interviews', path: '/interviews', label: '面试记录', icon: Users, description: '查看面试历史' },
         { id: 'interview-schedule', path: '/interview-schedule', label: '面试日程', icon: Calendar, description: '管理面试安排' },
         { id: 'learning', path: ROUTES.learning, label: '自适应学习', icon: BookOpen, description: '计划、任务和提醒' },
-        { id: 'multi-round', path: ROUTES.multiRound, label: '多轮面试', icon: Sparkles, description: '受控轮次与算法练习' },
       ],
     },
     {

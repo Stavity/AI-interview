@@ -12,8 +12,6 @@ import interview.guide.modules.learning.service.LearningPlanService;
 import interview.guide.modules.learning.service.LearningProgressService;
 import interview.guide.modules.learning.service.LearningRecommendationService;
 import interview.guide.modules.learning.service.LearningReminderService;
-import interview.guide.modules.multiround.service.MultiRoundInterviewService;
-import interview.guide.modules.multiround.service.MultiRoundReportService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -41,8 +39,6 @@ public class LearningController {
   private final LearningProgressService progressService;
   private final LearningRecommendationService recommendationService;
   private final LearningReminderService reminderService;
-  private final MultiRoundInterviewService multiRoundInterviewService;
-  private final MultiRoundReportService multiRoundReportService;
 
   @GetMapping("/sources")
   public Result<List<SkillSourceResponse>> listSources() {
@@ -53,13 +49,6 @@ public class LearningController {
   @GetMapping("/path-recommendation")
   public Result<List<RecommendationResponse>> pathRecommendation() {
     return Result.success(recommendationService.recommend().stream().map(RecommendationResponse::from).toList());
-  }
-  @PostMapping("/recommendations/from-interview/{sessionId}")
-  public Result<InterviewRecommendationPreviewResponse> recommendationsFromInterview(@PathVariable String sessionId) {
-    var interview = multiRoundInterviewService.getBySessionId(sessionId);
-    var report = multiRoundReportService.report(interview);
-    return Result.success(new InterviewRecommendationPreviewResponse(report.summary(), report.completedRounds(), report.totalRounds(),
-        recommendationService.recommend().stream().map(RecommendationResponse::from).toList()));
   }
   @PostMapping("/sources/{sourceId}/progress")
   public Result<ProgressResponse> adjustProgress(@PathVariable Long sourceId, @Valid @RequestBody AdjustProgressRequest request) {
@@ -157,8 +146,6 @@ public class LearningController {
   public record RecommendationResponse(Long sourceId, String skillId, String categoryKey, String displayName, int masteryScore, String reason) {
     static RecommendationResponse from(LearningRecommendationService.Recommendation value) { return new RecommendationResponse(value.sourceId(), value.skillId(), value.categoryKey(), value.displayName(), value.masteryScore(), value.reason()); }
   }
-  public record InterviewRecommendationPreviewResponse(String reportSummary, int completedRounds, int totalRounds, List<RecommendationResponse> recommendations) {}
-
   public record ReminderResponse(Long id, Long taskId, LocalDateTime remindAt, String channel, String status) {
     static ReminderResponse from(LearningReminderEntity reminder) {
       return new ReminderResponse(reminder.getId(), reminder.getTask().getId(), reminder.getRemindAt(),

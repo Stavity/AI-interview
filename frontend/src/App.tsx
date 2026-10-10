@@ -30,7 +30,6 @@ const InterviewHubPage = lazy(() => import('./pages/InterviewHubPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ChatPage = lazy(() => import('./pages/ChatPage'));
 const LearningPage = lazy(() => import('./pages/LearningPage'));
-const MultiRoundInterviewPage = lazy(() => import('./pages/MultiRoundInterviewPage'));
 const InterviewDetailPanel = lazy(() => import('./components/InterviewDetailPanel'));
 
 // Loading component
@@ -266,7 +265,6 @@ function App() {
             <Route path="knowledgebase/chat" element={<KnowledgeBaseQueryPageWrapper />} />
             <Route path={ROUTES.chat.slice(1)} element={<ChatPage />} />
             <Route path={ROUTES.learning.slice(1)} element={<LearningPage />} />
-            <Route path={ROUTES.multiRound.slice(1)} element={<MultiRoundInterviewPage />} />
           </Route>
           </Routes>
         </Suspense>

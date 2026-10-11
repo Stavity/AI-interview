@@ -1,4 +1,10 @@
-import { API_BASE_URL, getErrorMessage, getResultError, parseResultPayload } from './request';
+import {
+  API_BASE_URL,
+  getCsrfToken,
+  getErrorMessage,
+  getResultError,
+  parseResultPayload,
+} from './request';
 
 type SseParseMode = 'line' | 'event';
 
@@ -270,7 +276,20 @@ async function readStream(response: Response, options: StreamSseOptions): Promis
 
 export async function streamSse(options: StreamSseOptions): Promise<void> {
   try {
-    const response = await fetch(toApiUrl(options.url), options.init);
+    const method = (options.init.method ?? 'GET').toUpperCase();
+    const headers = new Headers(options.init.headers);
+
+    // 流式接口绕过了 Axios 拦截器：显式携带会话 Cookie 与 CSRF Token。
+    // 否则 Spring Security 会在 POST 流建立之前直接返回 403。
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      headers.set('X-CSRF-TOKEN', await getCsrfToken());
+    }
+
+    const response = await fetch(toApiUrl(options.url), {
+      ...options.init,
+      headers,
+      credentials: 'include',
+    });
     await assertStreamResponse(response);
     await readStream(response, options);
     options.onComplete();

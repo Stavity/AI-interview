@@ -42,7 +42,13 @@ export function clearCsrfToken(): void {
   csrfRequest = null;
 }
 
-async function getCsrfToken(): Promise<string> {
+/**
+ * 获取当前会话的 CSRF Token。
+ *
+ * 常规 REST 请求由 Axios 拦截器自动注入；SSE 使用原生 fetch，
+ * 因而也需要复用同一个 token 获取逻辑。
+ */
+export async function getCsrfToken(): Promise<string> {
   if (csrfToken) return csrfToken;
   if (!csrfRequest) {
     csrfRequest = instance.get<{ token: string }>('/api/auth/csrf', { skipCsrf: true })
